@@ -47,6 +47,8 @@ export interface Check {
   name?: string
   /** 本机 oracle 的查找起点，默认 process.cwd() */
   cwd?: string
+  /** 禁止联网来源：语境不足以确认这是 npm 包/版本时置 true */
+  noRegistry?: boolean
   /** 单条超时覆盖 */
   timeoutMs?: number
 }

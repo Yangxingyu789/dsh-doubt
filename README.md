@@ -172,7 +172,7 @@ Measured reply, with provenance:
 
 ## Noise guards
 
-1. **Silent when everything checks out** (new in v0.2: only refuted / inconclusive / unverifiable trigger an injection).
+1. **Silent unless there is a positive refutation**: only `refuted`, `inconclusive` with contradicting sources, or a Tier C vote split trigger an injection. Plain "couldn't verify" stays **silent** — the v0.2 rule ("speak unless everything is confirmed") measured as injecting on 100% of answers, i.e. pure noise.
 2. **Already verified → left alone.**
 3. **Short answers skipped**; **round budget** `maxRounds`, reset by a new human message.
 4. **State guard**: nothing injected while `running` or the inbox is busy.
@@ -216,6 +216,29 @@ npm run verify          # typecheck + build + 6 test suites
 | [src/config.ts](src/config.ts) | config + StandardSchemaV1 |
 
 Host extension points: `ctx.tools.register()`, `ctx.systemPrompt.section()`, `ctx.on('agent/status', …, {global:true})`, `agent.session.snapshotEvents()`, `agent.followup()`, `ctx.subagents.start()` (Tier C, degrades gracefully).
+
+---
+
+## Measured: does it actually help?
+
+The harness lives in `eval/` and is reproducible (`npm run eval:corpus` → `eval:extract` → `eval:sample` → manual ground truth → `eval:score` / `eval:delta`):
+
+- **Corpus**: **152 real assistant answers** from this machine's own session store (multi-frame zstd, 19852 events, 185 turns). No invented prompts, no self-answering.
+- **Ground truth**: 44 stratified claims verified by **independent means** (`Test-Path`, cross-repo grep, npm registry, the host's `d.ts`) — never by the plugin's own oracles.
+- **The metric is not "accuracy"** but the two dangerous error rates: false refutation (calling a correct claim wrong, which pushes the model to "fix" correct answers) and false confirmation (blessing a hallucination).
+
+| Metric | v0.2 (before) | v0.3 (after) |
+|---|---|---|
+| Extraction faithfulness | 24/44 = 54.5% | — |
+| Refutations emitted (full corpus) | 645 / 1345 | **8 / 1162** |
+| Refutation precision (each verified independently) | **0/13 = 0%** | **5/8 = 62.5%** (5/5 excluding examples quoted in my own messages) |
+| False confirmations | 0/12 | 0 |
+| Answers it spoke on | **152/152 = 100%** | **7/152 = 4.6%** |
+| Claims mechanically judgeable at all | — | 86/1162 = **7.4%** |
+
+Before the fixes it was **net negative**: it interrupted every single answer while its refutation channel had zero measured precision — a tool that fabricates rebuttals is worse than no tool. After them it is a **narrow net**: it speaks on 4.6% of answers, and 5 of those 8 were genuine catches (files the answer asserted exist but that do not).
+
+The last row is the one to remember: **only ~7% of the claims in real answers are mechanically judgeable on this machine**. This is not a general hallucination cure; it is a small net for files / packages / commands / versions. Everything else still needs verification tools and external sources.
 
 ---
 

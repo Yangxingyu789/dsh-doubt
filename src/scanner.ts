@@ -77,6 +77,10 @@ function commandLines(text: string): string[] {
       const cmd = (m ? m[1] : line).trim()
       if (cmd.length <= 2) continue
       if (NOT_A_COMMAND.test(cmd)) continue
+      // URL、参数续行、变量赋值都不是「可执行程序」：评测实测这些占了剩余假证伪的大头
+      if (/^[a-z][\w+.-]*:\/\//i.test(cmd)) continue
+      if (/^-/.test(cmd)) continue
+      if (/^\$?[A-Za-z_][\w.]*\s*=[^=]/.test(cmd)) continue
       // 未加引号、含空格的可执行路径无法安全切分 argv → 不猜
       const first = cmd.split(/\s+/)[0]
       if (/[\\/.]/.test(first) && /\s/.test(cmd) && !/^["']/.test(cmd)) continue
@@ -110,7 +114,36 @@ function isPlausiblePackageName(token: string): boolean {
   if (FILE_EXT_RE.test(token) || DOMAIN_RE.test(name)) return false
   if (/[A-Z]/.test(name)) return false
   if (/^\d/.test(name)) return false
+  // npm 名几乎不用下划线；真实语料里带下划线的反引号词全是配置键（base_url、reasoning_content…）
+  if (name.includes('_')) return false
   return true
+}
+
+/** 反引号整段优先：真实语料里带空格的路径（`F:\Call to Arms …`）被正则截到空格处 → 假证伪 */
+function isPathLike(t: string): boolean {
+  if (!t || t.includes('\n') || t.includes('://')) return false
+  // `\boxed{}` 这类 LaTeX 控制序列不是路径：单反斜杠开头不算路径（UNC 要 `\\server`）
+  if (/^\\(?![\\/])/.test(t)) return false
+  if (/[{}$`]/.test(t)) return false
+  if (t.includes('...')) return false // 占位符，如 `C:\Users\...\截图.png`
+  if (/^\.\.[\\/]/.test(t)) return false // 纯向上相对路径多是探测样例，不是存在性断言
+  return /^[A-Za-z]:[\\/]/.test(t) || /^~?[\\/]{2}/.test(t) || /^~?\//.test(t) || /^\.{1,2}[\\/]/.test(t)
+}
+
+function pathCandidates(text: string): string[] {
+  // 反引号与尖括号整段优先：真实语料里带空格/中文的路径常被这两种括号包住，
+  // 正则会在空格或 CJK 处截断（`F:\Call to Arms …`、<E:\1009\MECHREVO_控制台>）
+  const spans = [
+    ...[...text.matchAll(/`([^`\n]{2,240})`/g)].map((m) => m[1].trim()),
+    ...[...text.matchAll(/<([^<>\n]{2,240})>/g)].map((m) => m[1].trim()),
+  ].filter(isPathLike)
+  const out = new Set<string>(spans)
+  for (const m of text.matchAll(PATH_RE)) {
+    const p = m[0].replace(TRAILING_PUNCT, '')
+    const whole = [...out].find((s) => s.startsWith(p))
+    out.add(whole ?? p)
+  }
+  return [...out]
 }
 
 const DETECTORS: DetectorSpec[] = [
@@ -124,7 +157,7 @@ const DETECTORS: DetectorSpec[] = [
     kind: 'path',
     weight: 1,
     hint: '确认该路径存在（列目录或读文件），不存在就改掉',
-    find: (text) => [...new Set((text.match(PATH_RE) ?? []).map((p) => p.replace(TRAILING_PUNCT, '')).filter(Boolean))],
+    find: (text) => pathCandidates(text),
   },
   {
     kind: 'version',

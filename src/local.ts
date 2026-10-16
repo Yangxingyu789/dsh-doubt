@@ -107,10 +107,30 @@ export function which(bin: string): string | null {
   return null
 }
 
+/**
+ * 不在 PATH 里不等于「这条命令是错的」。评测实测的三类无效反驳：
+ *   PowerShell cmdlet / 别名（`Copy-Item`、`irm`）本来就不在 PATH；
+ *   POSIX 专用工具（`df`、`free`、`lscpu`）讲的是另一台 Linux；
+ *   通配符不是字面路径。
+ */
+const PS_CMDLET_RE = /^(Get|Set|New|Remove|Copy|Move|Rename|Test|Add|Out|Select|Where|ForEach|Measure|Write|Invoke|Start|Stop|Restart|Wait|Import|Export|ConvertFrom|ConvertTo|Format|Clear|Read|Install|Update|Push|Pop|Use)-[A-Z]\w+$/
+const PS_ALIASES = new Set(['irm', 'iwr', 'ise', 'ips', 'gcm', 'gci', 'gps', 'ps', 'sls', 'cat', 'cp', 'ls', 'mv', 'rm', 'echo', 'cd', 'cls', 'clear', 'write', 'select', 'where', 'foreach', 'measure', 'sort', 'group'])
+const POSIX_ONLY = new Set(['df', 'free', 'lscpu', 'lsblk', 'top', 'htop', 'grep', 'awk', 'sed', 'du', 'ls', 'cp', 'mv', 'rm', 'nvidia-smi', 'journalctl', 'systemctl', 'apt', 'apt-get', 'yum', 'dnf', 'pacman', 'ssh', 'scp', 'rsync', 'python3', 'pip3', 'bash', 'sh', 'zsh', 'vllm', 'cuda', 'tr', 'cut', 'sort', 'uniq', 'head', 'tail', 'wc', 'xargs', 'chmod', 'chown', 'ln', 'touch', 'find', 'which'])
+
+function notApplicableHere(bin: string): string | null {
+  const bare = bin.replace(/\.(exe|cmd|bat)$/i, '')
+  if (PS_CMDLET_RE.test(bare)) return 'PowerShell cmdlet 不在 PATH 里是正常的'
+  if (PS_ALIASES.has(bare.toLowerCase()) && process.platform === 'win32') return 'PowerShell 别名不在 PATH 里是正常的'
+  if (process.platform === 'win32' && POSIX_ONLY.has(bare.toLowerCase())) return 'POSIX 工具：这条命令大概是在讲另一台机器（Linux）'
+  return null
+}
+
 /** 命令里的程序是否存在（默认不执行回答里的命令） */
 export function commandAvailability(claim: string, argv: readonly string[]): OracleResult {
   const bin = argv[0] ?? ''
   if (!bin) return noEvidence('commandAvailability', claim, '空命令')
+  const na = notApplicableHere(bin)
+  if (na) return noEvidence('commandAvailability', claim, `${bin} 不在 PATH 中，但${na}；不能据此断言回答错了`)
   const found = which(bin)
   const sources: SourceHit[] = [{
     label: 'PATH/PATHEXT',

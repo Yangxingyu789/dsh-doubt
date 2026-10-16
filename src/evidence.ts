@@ -8,7 +8,7 @@
  *   unverifiable  本机与网络都拿不出判据 —— 必须如实标注，不许猜
  */
 
-import { existsSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import type { Claim } from './claims.js'
 import type { DoubtConfig } from './config.js'
 import { commandAvailability, packageVersion, symbolExists, versionClaim, type OracleResult } from './local.js'
@@ -36,6 +36,10 @@ interface RawSource {
 
 async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Promise<RawSource[]> {
   if (!net.online) return []
+  // claims.ts 是唯一闸门：checks 为空表示「这条根本不该被机械核验」，联网也不许自行开判
+  if (!claim.checks?.length) return []
+  // 语境不足以确认这是 npm 包/版本 → 不去 registry，避免拿毫不相干的包来「反驳」
+  if (claim.checks.every((c) => c.noRegistry)) return []
   const out: RawSource[] = []
   const pkgName = (() => {
     if (claim.kind === 'package') return claim.text.replace(/^`|`$/g, '').replace(/@[~^]?\d[\w.-]*$/, '')
@@ -95,8 +99,25 @@ function localOracle(claim: Claim, cfg: DoubtConfig): OracleResult {
     case 'path': {
       const check = claim.checks[0]
       const p = String(check?.path ?? claim.text)
-      const ok = existsSync(p)
-      return { kind: 'fileExists', claim: claim.text, ok, noEvidence: false, sources: [{ label: 'fs', value: ok ? `存在：${p}` : `不存在：${p}`, ok }], detail: ok ? `存在：${p}` : `不存在：${p}` }
+      // existsSync 把「没权限 stat」也当成不存在：`C:\pagefile.sys` 实测 Test-Path 为真、
+      // Node existsSync 为假 → 假证伪。只有 ENOENT 才算「不存在」，其余是判不了。
+      try {
+        const st = statSync(p)
+        return {
+          kind: 'fileExists',
+          claim: claim.text,
+          ok: true,
+          noEvidence: false,
+          sources: [{ label: 'fs', value: `存在：${p}（${st.isDirectory() ? '目录' : `${st.size} 字节`}）`, ok: true }],
+          detail: `存在：${p}`,
+        }
+      } catch (e) {
+        const code = (e as { code?: string })?.code
+        if (code === 'ENOENT' || code === 'ENOTDIR') {
+          return { kind: 'fileExists', claim: claim.text, ok: false, noEvidence: false, sources: [{ label: 'fs', value: `不存在：${p}`, ok: false }], detail: `不存在：${p}` }
+        }
+        return { kind: 'fileExists', claim: claim.text, ok: false, noEvidence: true, sources: [], detail: `无法 stat ${p}：${code ?? String(e)}（不是「不存在」）` }
+      }
     }
     case 'package':
       return packageVersion(claim.text, claim.text.replace(/^`|`$/g, ''), cwd)

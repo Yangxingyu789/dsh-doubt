@@ -14,7 +14,14 @@
 
 import { readFileSync } from 'node:fs'
 
-const { rows } = JSON.parse(readFileSync('eval/out/claims.json', 'utf8'))
+const argv = process.argv.slice(2)
+const arg = (name, fallback) => {
+  const i = argv.indexOf(`--${name}`)
+  return i >= 0 ? argv[i + 1] : fallback
+}
+// 标注的 id 对应的是**当初抽样那一版**的 claims.json；换版本要用 --claims 指过去
+const CLAIMS = arg('claims', 'eval/out/claims-v1.json')
+const { rows } = JSON.parse(readFileSync(CLAIMS, 'utf8'))
 const labels = JSON.parse(readFileSync('eval/out/labels.json', 'utf8'))
 const byId = new Map(rows.map((r) => [r.id, r]))
 

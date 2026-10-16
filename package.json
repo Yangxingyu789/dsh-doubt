@@ -43,6 +43,11 @@
     "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs",
     "smoke": "node test/smoke.mjs",
     "audit": "node scripts/audit.mjs",
+    "eval:corpus": "node eval/corpus.mjs",
+    "eval:extract": "node eval/extract.mjs",
+    "eval:sample": "node eval/sample.mjs --per 3",
+    "eval:score": "node eval/score.mjs --claims eval/out/claims-v1.json",
+    "eval:delta": "node eval/delta.mjs",
     "verify": "npm run check && npm run build && npm test && npm run smoke && npm run audit",
     "install:local": "node scripts/install-local.mjs"
   },
