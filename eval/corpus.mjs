@@ -6,6 +6,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 
@@ -38,7 +39,8 @@ const arg = (name, fallback) => {
   return i >= 0 ? argv[i + 1] : fallback
 }
 
-const SESSIONS = arg('sessions', process.env.DSH_SESSIONS ?? 'C:\\Users\\Administrator\\.dsh\\sessions')
+// 不要硬编码用户名：既不可移植，也会把本机账户名带进公开仓库。
+const SESSIONS = arg('sessions', process.env.DSH_SESSIONS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'sessions'))
 const OUT = arg('out', 'eval/out/corpus.json')
 const MIN_CHARS = Number(arg('min-chars', 240))
 

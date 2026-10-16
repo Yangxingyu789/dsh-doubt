@@ -78,7 +78,7 @@ dsh plugin --profile desktop add dsh-doubt
 离线（不联网）：
 
 ```powershell
-git clone https://github.com/YOUR_NAME/dsh-doubt.git
+git clone https://github.com/<你的GitHub账号>/dsh-doubt.git
 cd dsh-doubt
 pnpm install --offline
 node scripts/install-local.mjs --dry     # 先看会改什么

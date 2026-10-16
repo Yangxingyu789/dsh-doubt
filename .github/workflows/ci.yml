@@ -7,10 +7,14 @@ on:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    # 插件的主目标平台是 Windows（本机 oracle、argv 转义、PATHEXT、junction 都在那边），
+    # 所以两个平台都跑：ubuntu 保证可移植性没有被破坏，windows 才是真实使用环境。
     strategy:
+      fail-fast: false
       matrix:
+        os: [ubuntu-latest, windows-latest]
         node-version: [22.x, 24.x]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -21,4 +25,9 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      # typecheck + build + 6 套测试 + smoke + 仓库自检
       - run: npm run verify
+      # 外部裁判那一套需要解包后的宿主应用（DSH_ASAR_DIR），CI 里没有 → 它会如实 SKIP，
+      # 所以这里只是顺手跑一遍，缺宿主不会让构建变红。
+      - run: npm run verify:independent
+        continue-on-error: true

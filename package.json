@@ -65,14 +65,6 @@
     "幻觉",
     "自检"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/YOUR_NAME/dsh-doubt.git"
-  },
-  "homepage": "https://github.com/YOUR_NAME/dsh-doubt#readme",
-  "bugs": {
-    "url": "https://github.com/YOUR_NAME/dsh-doubt/issues"
-  },
   "license": "MIT",
   "dsh": {
     "bundle": {
@@ -80,9 +72,9 @@
     },
     "install": {
       "preferred": "tarball",
-      "tarball": "https://github.com/YOUR_NAME/dsh-doubt/archive/refs/heads/main.tar.gz",
-      "zip": "https://github.com/YOUR_NAME/dsh-doubt/archive/refs/heads/main.zip",
-      "git": "https://github.com/YOUR_NAME/dsh-doubt.git"
+      "tarball": "https://github.com/<你的GitHub账号>/dsh-doubt/archive/refs/heads/main.tar.gz",
+      "zip": "https://github.com/<你的GitHub账号>/dsh-doubt/archive/refs/heads/main.zip",
+      "git": "https://github.com/<你的GitHub账号>/dsh-doubt.git"
     }
   },
   "peerDependencies": {

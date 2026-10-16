@@ -5,3 +5,7 @@ lib/
 .DS_Store
 .offline-test/
 test/__tmp_*
+
+# 评测产物是从**本机真实会话**里抽出来的，含回答原文、本机路径与内网地址。
+# 只提交生成它们的脚本（eval/*.mjs），产物一律不进版本库。
+eval/out/

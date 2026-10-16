@@ -67,7 +67,7 @@ const NOT_A_COMMAND = /[\u4e00-\u9fff→⇒]|=>|\|\s|\d{2}:\d{2}:\d{2}|\bPID\b|\
  * shell / 批处理 / PowerShell 的**语法**不是「可执行程序」。
  *
  * 这是实测出来的最大一类假证伪：把部署手册里的 .bat / .ps1 代码块逐行拿去 `which`，
- * 于是 `@echo off`、`title VideoLingo`、`set "VCVARS=..."`、`if not exist (...)`、
+ * 于是 `@echo off`、`title MyApp`、`set "VCVARS=..."`、`if not exist (...)`、
  * `env:PATH = ...`、`[pscustomobject]@{` 全被当成命令，判「程序不在 PATH 中」→ refuted。
  * 脚本越完整，假证伪越多——正是最该给用户看的那种文档受害最重。
  */
