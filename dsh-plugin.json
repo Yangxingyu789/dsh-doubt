@@ -1,0 +1,58 @@
+{
+  "manifestVersion": "0.15",
+  "id": "dsh-doubt",
+  "name": "dsh-doubt",
+  "version": "0.1.0",
+  "license": "MIT",
+  "facets": {
+    "host": {
+      "entry": "lib/index.js",
+      "apiVersion": "v1alpha1"
+    }
+  },
+  "requires": {
+    "contracts": [
+      {
+        "apiVersion": "tools.dsh/v1alpha1",
+        "kind": "Tool"
+      }
+    ]
+  },
+  "permissions": [
+    {
+      "name": "dsh-doubt.process.spawn",
+      "scope": "subprocess",
+      "reason": "verify_claims 需要真实执行用户/模型提交的命令，才能给出实测证据。"
+    },
+    {
+      "name": "dsh-doubt.fs.read",
+      "scope": "filesystem-read",
+      "reason": "fileExists / fileMatch 检查需要读取被断言的文件。"
+    }
+  ],
+  "contributes": {
+    "x-display": [
+      {
+        "title": "dsh-doubt",
+        "description": "自动复核：扫描回答里未取证的断言并追加复核轮，附带 verify_claims 取证工具。"
+      }
+    ],
+    "x-prompt-sections": [
+      {
+        "name": "dsh-doubt:self-check",
+        "order": 3260,
+        "summary": "先取证再断言；禁止用绝对化措辞掩盖未验证的结论。"
+      }
+    ],
+    "x-tool-namespaces": [
+      {
+        "serverName": "dsh-doubt",
+        "transport": "in-process",
+        "source": "dsh-doubt 插件本体",
+        "publicPrefix": "",
+        "tools": ["verify_claims"]
+      }
+    ]
+  },
+  "subscriptions": []
+}

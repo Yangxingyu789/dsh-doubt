@@ -1,0 +1,14 @@
+# dsh-doubt 自带的 patch 层。
+# 用户想改配置，就在 profile 的 cordis.patch.yml 里加同 id 条目覆盖（后加载优先）。
+- id: dsh-doubt
+  name: "dsh-doubt"
+  config:
+    enabled: true
+    verifyTool: true
+    promptSection: true
+    autoRecheck: true
+    maxRounds: 2
+    minScore: 6
+    maxFindings: 8
+    minAnswerChars: 240
+    language: auto
