@@ -74,4 +74,31 @@ assert.equal(bogusPath?.verdict, 'refuted', `本机不存在的路径应被证�
 const bogusPkg = bogus.find((e) => e.kind === 'package')
 assert.equal(bogusPkg?.verdict, 'unverifiable', `离线时「本机没这个包」不得算证伪：${bogusPkg?.verdict} / ${bogusPkg?.note ?? ''}`)
 
-console.log(`evidence.test OK（判定规则 + 安全翻译 + 离线取证端到端；样例 ${ev.length} 条）`)
+// 只有确属本机的路径才证伪；上下文在讲另一台机器时必须降级为「判不了」。
+// 方向性保证：这个守卫只会让断言变沉默，**不会新增任何反驳**。
+//
+// 变异测试实测过的坑：原来的措辞用的是「把配置写到 …」，而 `写到` 不在 EXISTENCE_RE 里，
+// 于是断言在更早的 assertsExistence 闸就被丢掉、mentionsOtherMachine **根本没被执行**——
+// 测试是绿的但零覆盖。所以这里必须用**能通过 assertExistence 且命中远程语境**的措辞。
+const remoteAnswer = '目标服务器上存在 E:\\zz-definitely-missing\\a\\b.yaml，请先确认后再继续。'
+const remoteClaims = extractClaims(scanAnswer(remoteAnswer, {}).findings, { text: remoteAnswer })
+const remoteReachable = remoteClaims.filter((c) => c.kind === 'path')
+assert.ok(remoteReachable.length > 0, `这个用例必须真的产生 path 断言，否则守卫测不到：${JSON.stringify(remoteClaims)}`)
+assert.ok(
+  remoteReachable.every((c) => c.unmechanizable?.includes('另一台机器')),
+  `目标机器的路径必须由 mentionsOtherMachine 降级（而不是靠别的闸碰巧丢掉）：${JSON.stringify(remoteReachable)}`,
+)
+const remoteEv = await gatherEvidence(remoteClaims, cfg, { online: false, probedAt: Date.now(), latencyMs: 0 })
+const remotePath = remoteEv.find((e) => e.kind === 'path')
+assert.notEqual(remotePath?.verdict, 'refuted', `目标机器的路径不得被本机证伪：${remotePath?.verdict} / ${remotePath?.note ?? ''}`)
+
+// 方法调用不是程序名：`.ps1` 里的 `z.Dispose()` 曾被拿去 which → 假证伪
+const callEv = await gatherEvidence(
+  extractClaims(scanAnswer('脚本里调用 z.Dispose() 释放对象。', {}).findings, {}),
+  cfg,
+  { online: false, probedAt: Date.now(), latencyMs: 0 },
+)
+const callClaim = callEv.find((e) => e.kind === 'command')
+if (callClaim) assert.notEqual(callClaim.verdict, 'refuted', `方法调用不得被证伪：${callClaim.verdict}`)
+
+console.log(`evidence.test OK（判定规则 + 安全翻译 + 离线取证端到端 + 另一台机器/方法调用 守卫；样例 ${ev.length} 条）`)

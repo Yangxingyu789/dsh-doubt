@@ -3,7 +3,10 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { packageForVersionClaim } from '../lib/claims.js'
+import { normalizeConfig } from '../lib/config.js'
 import { commandAvailability, packageVersion, rangeSatisfied, symbolExists, versionClaim, which } from '../lib/local.js'
+import { sessionCwd } from '../lib/scanner.js'
+import { buildVerifyTool } from '../lib/tool.js'
 import { runCheck } from '../lib/verify.js'
 
 const cwd = process.cwd()
@@ -67,6 +70,34 @@ assert.equal(rangeSatisfied('*', '5.9.3'), true)
 assert.equal(rangeSatisfied('^1.2.3 || ^5.0.0', '5.9.3'), true, '|| 任一满足即可')
 assert.equal(rangeSatisfied('workspace:*', '5.9.3'), undefined, '无法判断的范围必须返回 undefined，不得算反驳')
 
+// 4g) 部分版本号的上界语义（与 node-semver 逐条对齐过 612 组）：
+//     `<=1.2` 是 <1.3.0、`<=4` 是 <5.0.0、`>1.2` 是 >=1.3.0。曾直接拿补 0 的三元组比 → 假证伪。
+assert.equal(rangeSatisfied('<=1.2', '1.2.5'), true, '<=1.2 应允许 1.2.5')
+assert.equal(rangeSatisfied('<=1.2', '1.3.0'), false, '<=1.2 不应允许 1.3.0')
+assert.equal(rangeSatisfied('<=4', '4.5.0'), true, '<=4 应允许 4.5.0')
+assert.equal(rangeSatisfied('<=4', '5.0.0'), false, '<=4 不应允许 5.0.0')
+assert.equal(rangeSatisfied('>1.2', '1.2.5'), false, '>1.2 表示 >=1.3.0，1.2.5 不满足')
+assert.equal(rangeSatisfied('>1.2', '1.3.0'), true, '>1.2 应允许 1.3.0')
+assert.equal(rangeSatisfied('^0', '0.5.0'), true, '^0 是 >=0.0.0 <1.0.0，0.5.0 应满足')
+assert.equal(rangeSatisfied('^0', '1.0.0'), false, '^0 不应跨到 1.0.0')
+assert.equal(rangeSatisfied('^0.0', '0.0.5'), true, '^0.0 是 <0.1.0，0.0.5 应满足')
+assert.equal(rangeSatisfied('^0.0', '0.1.0'), false, '^0.0 不应跨到 0.1.0')
+assert.equal(rangeSatisfied('^0.x', '0.2.9'), true, '^0.x 是 <1.0.0')
+assert.equal(rangeSatisfied('^0.0.3', '0.0.4'), false, '^0.0.3 不应跨 patch')
+assert.equal(rangeSatisfied('=1.2', '1.2.9'), true, '=1.2 等价于 1.2.x')
+
+// 4h) which() 必须认得**已经写全扩展名**的命令。
+//     只往后拼 PATHEXT 时，明明在 PATH 上的 npm.cmd 会被判「不存在」→ 假证伪。
+if (process.platform === 'win32') {
+  assert.ok(which('npm.cmd'), 'npm.cmd 应在 PATH 里')
+  const caExt = commandAvailability('npm.cmd 可用', ['npm.cmd'])
+  assert.equal(caExt.noEvidence, false, '带扩展名的真实命令不得归结为「无法判断」')
+  assert.equal(caExt.ok, true, `npm.cmd 应判存在：${caExt.detail}`)
+}
+// POSIX 专用工具在 Windows 上不得算反驳
+const sudo = commandAvailability('sudo systemctl restart nginx', ['sudo', 'systemctl', 'restart', 'nginx'])
+assert.equal(sudo.noEvidence, true, 'sudo 在 Windows 上应判「大概在讲另一台机器」，不得反驳')
+
 // 4f) 真实版本断言不得因范围判断错误而降级成 inconclusive
 const realClaim = versionClaim('typescript 5.9.3', cwd, 'typescript')
 assert.equal(realClaim.ok, true, `真实版本应被支持：${realClaim.detail}`)
@@ -106,4 +137,107 @@ assert.equal(viaTool.ok, true, `runCheck 应能跑 packageVersion：${viaTool.de
 const viaTool2 = await runCheck({ kind: 'commandAvailability', argv: ['node', '--version'], claim: 'node --version' }, { timeoutMs: 5000, denyBinaries: [], cwd })
 assert.equal(viaTool2.ok, true, 'runCheck 应能跑 commandAvailability')
 
-console.log(`local.test OK（PATH/包版本/版本断言/符号 全部实测；typescript=${installed}，${pv.sources.length} 个独立来源）`)
+// 7) 本机 oracle 的查找起点必须是**会话的工作目录**，不是宿主进程的 cwd。
+//
+// 实测症状：`DEFAULT_CONFIG.workspace = process.cwd()` 在插件加载时求值，而宿主进程的
+// cwd 是 profile 目录（`…\.dsh\profiles\desktop`），于是 `verify_claims` 里
+// `packageVersion typescript` 返回「本机没有该包」——而它其实装在用户的项目里。
+// 权威来源是会话的第一个事件：`{ type:'session', cwd:'…' }`（cwd 是**顶层**字段）。
+assert.equal(sessionCwd([{ type: 'session', cwd: 'E:\\proj' }, { type: 'turn/end', data: {} }]), 'E:\\proj', 'sessionCwd 应取会话事件的顶层 cwd')
+assert.equal(sessionCwd([{ type: 'turn/end', data: {} }]), null, '没有 session 事件应返回 null')
+
+// 工具路径：没有 agent 时回落到 cfg.workspace（这里故意指到 profile 目录）
+const profileDir = join(tmpdir(), `dsh-doubt-nope-${process.pid}`)
+mkdirSync(profileDir, { recursive: true })
+const toolAt = buildVerifyTool(() => normalizeConfig({ workspace: profileDir }))
+const noAgent = await toolAt.execute({ checks: [{ kind: 'packageVersion', name: 'typescript', claim: 'typescript 已安装' }] }, { signal: undefined })
+assert.equal(noAgent.results[0].ok, false, `找不到时应如实说没有证据：${noAgent.results[0].detail}`)
+assert.ok(noAgent.results[0].detail.includes('未安装') || noAgent.results[0].detail.includes('没有'), '应说明本机没有')
+
+// 有 agent（会话 cwd = 本仓库）时应能找到。
+// **必须用运行时的真实形状** `agent.session.header.cwd` —— 宿主自己的工具就是这么拿的
+// （dsh-tool-fs/lib/index.js:173、dsh-tool-bash/lib/index.js:294）。
+// 我上一版拿自己编的 `session: { snapshotEvents }` 形状去验证，于是活体上一直回落到
+// profile 目录、`packageVersion typescript` 报「本机没有该包」，而测试却是绿的。
+const toolWs = buildVerifyTool(() => normalizeConfig({ workspace: profileDir }))
+const agentStub = { id: 'a', session: { header: { cwd } } }
+const withAgent = await toolWs.execute({ checks: [{ kind: 'packageVersion', name: 'typescript', claim: 'typescript 已安装' }] }, { signal: undefined, agent: agentStub })
+assert.equal(withAgent.results[0].ok, true, `agent 的会话 cwd 应让 oracle 找到包：${withAgent.results[0].detail}`)
+assert.equal(withAgent.workspace.source, 'exec.agent.session.header.cwd', '应走 header 这条权威来源')
+
+// 事件扫描作为兜底：只有 session 事件、没有 header 时也要能用
+const fallbackAgent = { id: 'b', session: { id: 'b', snapshotEvents: () => [{ type: 'session', cwd }] } }
+const viaFallback = await toolWs.execute({ checks: [{ kind: 'packageVersion', name: 'typescript', claim: 'typescript 已安装' }] }, { signal: undefined, agent: fallbackAgent })
+assert.equal(viaFallback.results[0].ok, true, `没有 header 时应回落到事件扫描：${viaFallback.results[0].detail}`)
+assert.equal(viaFallback.workspace.source, 'session event scan', '应标明来源是事件扫描')
+
+// 显式 cwd 仍然优先于回落
+const explicit = await toolAt.execute({ checks: [{ kind: 'packageVersion', name: 'typescript', claim: 'typescript 已安装', cwd }] }, { signal: undefined })
+assert.equal(explicit.results[0].ok, true, '显式 cwd 应覆盖回落值')
+
+// 11) 工具返回值必须**符合它自己声明的 output schema**。
+//     宿主按 `additionalProperties: false` 严格校验：活体上我给返回对象加了
+//     `workspace` / `failed` 却忘了写进 OUTPUT_SCHEMA，宿主直接报
+//     `tool "verify_claims" returned invalid output: "value.workspace" is not a declared property`
+//     —— 那次改动让工具在运行时**每次都失败**，而当时测试全绿。
+{
+  const schema = buildVerifyTool(() => normalizeConfig({})).output?.schema
+  assert.ok(schema?.properties, '工具应声明 output schema')
+  const declared = new Set(Object.keys(schema.properties))
+  const value = await toolAt.execute({ checks: [{ kind: 'fileExists', path: process.argv[1] }] }, { signal: undefined })
+  assert.deepEqual(
+    Object.keys(value).filter((k) => !declared.has(k)),
+    [],
+    `返回值里有未在 output schema 声明的键（宿主会拒绝整个输出）：${JSON.stringify(Object.keys(value))} vs ${JSON.stringify([...declared])}`,
+  )
+  for (const req of schema.required ?? []) assert.ok(req in value, `缺少必填字段 ${req}`)
+  // results 里的每一项同样受 additionalProperties:false 约束
+  const itemProps = new Set(Object.keys(schema.properties.results.items.properties))
+  for (const r of value.results) {
+    assert.deepEqual(Object.keys(r).filter((k) => !itemProps.has(k)), [], `results 项里有未声明的键：${JSON.stringify(Object.keys(r))}`)
+  }
+}
+rmSync(profileDir, { recursive: true, force: true })
+
+// 8) 方法/函数调用不是可执行程序名（`.ps1` 里的 `z.Dispose()` 曾被拿去 which → 假证伪）。
+//    只往沉默方向走：真实程序、盘符路径、带点的 exe 名都不得被误判成「调用」。
+assert.equal(commandAvailability('z.Dispose()', ['z.Dispose()']).noEvidence, true, 'z.Dispose() 应判无法核验')
+assert.equal(commandAvailability('foo.Bar(x)', ['foo.Bar(x)']).noEvidence, true, 'foo.Bar(x) 应判无法核验')
+assert.ok(commandAvailability('node --version', ['node', '--version']).detail.includes('PATH/PATHEXT'), '真实程序不受影响')
+assert.ok(
+  commandAvailability('paren path', ['C:\\Program Files (x86)\\SomeApp\\app.exe']).detail.includes('PATH/PATHEXT'),
+  '含 (x86) 的盘符路径不得被当成方法调用',
+)
+assert.ok(commandAvailability('dotted exe', ['some.tool.exe']).detail.includes('PATH/PATHEXT'), '带点的 exe 名不得被当成方法调用')
+
+// 9) 设备/厂商 CLI 属于**另一台机器**（NPU/GPU 服务器），本机没有它不是反驳。
+//    变异测试实测：删掉 REMOTE_DEVICE_TOOLS 后 11 个条目里 10 个会退回
+//    「✗ [PATH/PATHEXT] <tool> 不在 PATH 中」（noEvidence=false），而当时**没有任何测试会失败**。
+//    这正是插件在真实 46k 部署手册上唯一那条 refuted（`npu-smi info`）。
+const DEVICE_TOOLS = ['npu-smi', 'rocm-smi', 'hccn_tool', 'ibstat', 'ibv_devinfo', 'mlxconfig', 'ascend-dmi', 'dcmi', 'ipmitool', 'racadm', 'nvidia-smi']
+for (const tool of DEVICE_TOOLS) {
+  const r = commandAvailability(`${tool} info`, [tool, 'info'])
+  assert.equal(r.noEvidence, true, `${tool} 应判「另一台机器的工具」，不得反驳（实际 noEvidence=${r.noEvidence}）`)
+  assert.equal(r.ok, false, `${tool} 不得被当成支持`)
+}
+// 真实存在的本机程序不得被这条守卫吞掉
+assert.equal(commandAvailability('node --version', ['node', '--version']).noEvidence, false, 'node 不该被判成设备工具')
+
+// 10) 自指证据：**任何同名包**都不是证据——不管它在哪个路径。
+//     实测过的失效场景：插件从已安装副本加载（C:\...\.dsh\plugins\dsh-doubt），
+//     会话工作目录是仓库（C:\work\dsh-doubt）——两个路径、同一个包，路径前缀比较必然漏掉，
+//     于是 `symbolExists('normalizeConfig()', 'C:/work/dsh-doubt')` 引用 src/config.ts
+//     把插件自己的 API「证实」给自己看。所以这里造一个**同名包在别的路径**来测。
+{
+  const fake = join(tmpdir(), `dsh-doubt-copy-${process.pid}`)
+  rmSync(fake, { recursive: true, force: true })
+  mkdirSync(fake, { recursive: true })
+  writeFileSync(join(fake, 'package.json'), JSON.stringify({ name: 'dsh-doubt', version: '0.0.0' }))
+  writeFileSync(join(fake, 'lib.js'), 'export function zzSelfOnlySymbol() { return 1 }\n')
+  const selfHit = symbolExists('zzSelfOnlySymbol()', fake)
+  assert.equal(selfHit.noEvidence, true, `同名包里的符号不得当证据：${selfHit.detail}`)
+  assert.equal(selfHit.ok, false, '自指证据不得算支持')
+  rmSync(fake, { recursive: true, force: true })
+}
+
+console.log(`local.test OK（PATH/包版本/版本断言/符号/会话工作目录/方法调用守卫/自指证据 全部实测；typescript=${installed}，${pv.sources.length} 个独立来源）`)

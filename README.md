@@ -108,6 +108,7 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `factoredProvider` | `spawn` | Subagent provider name (verified: `dsh-subagent-spawn-in-process` registers under its own `config.providerName`, default `spawn`; that provider's children have zero parent context). Auto-degrades with an honest report when unavailable |
 | `executeAnswerCommands` | `false` | **Do not execute commands from the answer by default** — only check that the program exists |
 | `strictLabeling` | `true` | Unverifiable assertions must be labelled in the final answer |
+| `requireProvenance` | `true` | When a delivered document (`.md`/`.txt`) is written with no provenance section, ask for a step-by-step provenance table (see "Provenance gate"). Once per document; own budget of 4 per human turn, independent of `maxRounds` |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
 | `maxRounds` | `2` | Injection budget (reset by a new human message) |
 | `minScore` | `6` | Trigger threshold |
@@ -170,6 +171,29 @@ Measured reply, with provenance:
 
 ---
 
+## Provenance gate
+
+Claim-level verification is nearly useless on prose documents: measured on a real 46k-character
+deployment manual, the mechanical oracles covered 21 assertions — 20 unjudgeable and 1 was a false
+refutation. But when the same model was asked *"does every deployment step have a basis?"* it
+produced a 42-item / 9-category provenance table on its own. **The capability exists; the trigger
+did not.** So this gate does not judge the document, it demands one concrete artifact.
+
+- Fires when a turn **writes a delivered document** (`.md`/`.txt`/…, excluding `logs/`, `tmp/`, …)
+  whose body has no provenance heading, and the scanner finds enough specific assertions.
+- Injects a request for a step-by-step provenance table: every item either **sourced** (link, doc
+  title, version) or **unsourced**, with unsourced items kept and labelled.
+- Off-switch is the artifact itself: once the document carries a provenance section
+  (`溯源|出处|逐步骤|参考文献|来源总表|未验证项`), it is never asked again.
+- Noise control: **once per document path**, own budget of 4 per human turn (independent of
+  `maxRounds`), and it never runs on the claim-level path.
+
+Measured on real sessions: a 126-turn document-heavy session produced **6 asks — one per delivered
+document, not one per write**; an 11-turn code/analysis session produced **0**; the manual above
+produced **1 ask before** the provenance appendix existed and **0 after**.
+
+---
+
 ## Noise guards
 
 1. **Silent unless there is a positive refutation**: only `refuted`, `inconclusive` with contradicting sources, or a Tier C vote split trigger an injection. Plain "couldn't verify" stays **silent** — the v0.2 rule ("speak unless everything is confirmed") measured as injecting on 100% of answers, i.e. pure noise.
@@ -198,8 +222,24 @@ It does **not** go through DSH's sandbox/approval chain — a known plugin-layer
 ```bash
 pnpm install            # online
 pnpm install --offline  # with a warm pnpm store
-npm run verify          # typecheck + build + 6 test suites
+npm run verify          # typecheck + build + 6 test suites + smoke + 13 repository checks
+npm run verify:independent  # check the claims against oracles that are NOT this project
 ```
+
+`npm run verify:independent` exists because "the tests pass" is weak evidence when the tests
+were written together with the code. It judges the project only with outside references:
+
+| Check | Oracle |
+|---|---|
+| the plugin row actually reaches the composed profile | the real `dsh` CLI (`--dump-config` on a throwaway profile) |
+| `rangeSatisfied` is right | the real `semver` package, ~500 range/version pairs |
+| the plugin registers under the host's service-injection rule | the real `@deepseek-ai/cordis`, on a context where reading `ctx.tools` on the *outer* context throws |
+| the provenance gate fires once per delivered document | this machine's own session logs, replayed through the real loop |
+| no `expr` payload can kill or hang the host | each payload in its own child process |
+| the silence-only guards never invent a refutation | a genuinely local missing path must still be refuted |
+
+Items needing the unpacked host app report `SKIP` with the reason when it is absent (set
+`DSH_ASAR_DIR` to point at it).
 
 | File | Responsibility |
 |---|---|

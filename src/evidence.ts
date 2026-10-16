@@ -9,7 +9,8 @@
  */
 
 import { statSync } from 'node:fs'
-import type { Claim } from './claims.js'
+import { isAbsolute, resolve } from 'node:path'
+import { packageForVersionClaim, type Claim } from './claims.js'
 import type { DoubtConfig } from './config.js'
 import { commandAvailability, packageVersion, symbolExists, versionClaim, type OracleResult } from './local.js'
 import type { NetState } from './network.js'
@@ -43,8 +44,13 @@ async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Pro
   const out: RawSource[] = []
   const pkgName = (() => {
     if (claim.kind === 'package') return claim.text.replace(/^`|`$/g, '').replace(/@[~^]?\d[\w.-]*$/, '')
-    const m = /(?:@[\w.-]+\/)?[a-z][\w.-]{1,60}/.exec(claim.text)
-    return m ? m[0] : null
+    if (claim.kind === 'version') {
+      // 必须复用 claims.ts 里那套**锚定**的解析。这里曾自带一个非锚定的小写正则，
+      // 匹配会从第二个字符开始：`Express 4.18.2` → `xpress`、`Vite 5.4.0` → `ite`，
+      // 于是拿一个不存在的包去 registry 查，把**正确**的版本断言判成 refuted（假证伪）。
+      return packageForVersionClaim(claim.text)?.toLowerCase() ?? null
+    }
+    return null
   })()
 
   if (pkgName && (claim.kind === 'package' || claim.kind === 'version')) {
@@ -53,7 +59,15 @@ async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Pro
         const url = `${base.replace(/\/$/, '')}/${pkgName.replace('/', '%2F')}`
         const res = await fetch(url, { signal: AbortSignal.timeout(cfg.onlineTimeoutMs) })
         if (res.status === 404) {
-          out.push({ label: `registry ${base}`, value: `${pkgName} 在 registry 里不存在`, ok: claim.kind === 'package' ? false : true })
+          out.push({
+            label: `registry ${base}`,
+            value: `${pkgName} 在 registry 里不存在`,
+            // package 断言：查无此包就是反驳。
+            // version 断言：包名是从自然语言里猜出来的，404 更可能是名字猜错了
+            // （实测 `lodash v4.17` 曾拿 `v4.17` 当包名查 → 404 → 反而被算成「证实」）。
+            ok: false,
+            weak: claim.kind === 'version',
+          })
           continue
         }
         if (!res.ok) { out.push({ label: `registry ${base}`, value: `HTTP ${res.status}`, ok: false, weak: true }); continue }
@@ -76,8 +90,10 @@ async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Pro
   return out
 }
 
-function localOracle(claim: Claim, cfg: DoubtConfig): OracleResult {
-  const cwd = cfg.workspace
+function localOracle(claim: Claim, cfg: DoubtConfig, workspace?: string): OracleResult {
+  // workspace 优先：它来自会话事件里的 `cwd`（宿主权威值）。cfg.workspace 只是兜底，
+  // 因为它在插件加载时等于宿主进程的 cwd —— 那是 profile 目录，不是用户的项目。
+  const cwd = workspace || cfg.workspace
   // claims.ts 是「这条断言本机能不能判」的唯一闸门：checks 为空就必须照实说无法核验，
   // 绝不能在这里另起一套判定绕过它（评测实测：POSIX 路径守卫曾被这里绕过）
   if (!claim.checks || claim.checks.length === 0) {
@@ -98,7 +114,30 @@ function localOracle(claim: Claim, cfg: DoubtConfig): OracleResult {
     }
     case 'path': {
       const check = claim.checks[0]
-      const p = String(check?.path ?? claim.text)
+      const raw = String(check?.path ?? claim.text)
+      // 相对路径要相对 cfg.workspace 解析，而不是宿主进程的 cwd。
+      // 实测 `./marker.ts` 明明在 cfg.workspace 里存在，却按 process.cwd() 去找 → 假证伪。
+      const p = isAbsolute(raw) ? raw : resolve(cwd, raw)
+      // 盘符不存在 → 这条路径大概在另一台机器/另一块盘上，不是本机事实。
+      // 纠正一条早先写错的注释：这台机器其实有 C:/D:/E:/F:/G:（`Test-Path 'D:\'` 为真），
+      // 所以这一条守卫**不会**拦住 `D:\…`。真正拦下远程语境的是 claims.ts 的 mentionsOtherMachine。
+      // 这里只处理「盘符确实不存在」这一种情况。
+      const drive = /^([A-Za-z]):[\\/]/.exec(p)
+      if (drive && process.platform === 'win32') {
+        const root = `${drive[1].toUpperCase()}:\\`
+        let driveExists = true
+        try { statSync(root) } catch { driveExists = false }
+        if (!driveExists) {
+          return {
+            kind: 'fileExists',
+            claim: claim.text,
+            ok: false,
+            noEvidence: true,
+            sources: [],
+            detail: `本机没有 ${drive[1].toUpperCase()}: 盘符，这条路径大概在另一台机器上（不构成反驳）`,
+          }
+        }
+      }
       // existsSync 把「没权限 stat」也当成不存在：`C:\pagefile.sys` 实测 Test-Path 为真、
       // Node existsSync 为假 → 假证伪。只有 ENOENT 才算「不存在」，其余是判不了。
       try {
@@ -149,10 +188,10 @@ export function verdictOf(sources: readonly RawSource[], cfg: DoubtConfig, onlin
   return { verdict: 'confirmed', agreeing: support, contradicting }
 }
 
-export async function gatherEvidence(claims: readonly Claim[], cfg: DoubtConfig, net: NetState): Promise<Evidence[]> {
+export async function gatherEvidence(claims: readonly Claim[], cfg: DoubtConfig, net: NetState, workspace?: string): Promise<Evidence[]> {
   const out: Evidence[] = []
   for (const claim of claims) {
-    const local = localOracle(claim, cfg)
+    const local = localOracle(claim, cfg, workspace)
     const remote = await onlineSources(claim, cfg, net)
     const sources: RawSource[] = [...local.sources, ...remote]
     const v = verdictOf(sources, cfg, net.online)

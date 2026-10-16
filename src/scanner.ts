@@ -63,6 +63,33 @@ const SHELL_PROMPT = /^\s*(?:\$|>|PS>|C:\\[^>]*>|#)\s*(.+)$/
 /** 日志/表格/散文特征：命中就不当命令（评测实测的假命令全来自这类行） */
 const NOT_A_COMMAND = /[\u4e00-\u9fff→⇒]|=>|\|\s|\d{2}:\d{2}:\d{2}|\bPID\b|\bMiB\b|\bGiB\b|\bStatus\s*=|={3,}|-{3,}/
 
+/**
+ * shell / 批处理 / PowerShell 的**语法**不是「可执行程序」。
+ *
+ * 这是实测出来的最大一类假证伪：把部署手册里的 .bat / .ps1 代码块逐行拿去 `which`，
+ * 于是 `@echo off`、`title VideoLingo`、`set "VCVARS=..."`、`if not exist (...)`、
+ * `env:PATH = ...`、`[pscustomobject]@{` 全被当成命令，判「程序不在 PATH 中」→ refuted。
+ * 脚本越完整，假证伪越多——正是最该给用户看的那种文档受害最重。
+ */
+const SHELL_SYNTAX = [
+  /^@/,
+  /^&/,                                    // @echo off
+  /^:(?!:)/,                               // 批处理标签
+  /\[[\w.]*\]\s*@?\{?\s*$/,                // [pscustomobject]@{ 、[ordered]@{}
+  /^["'][^"']*["']\s*$/,                   // whole-line string literal
+  /^(set|setx|export|alias|unset|declare|local|readonly)\b/i,   // set "X=Y" / export X=Y
+  /^(if|then|elif|else|fi|for|foreach|while|until|do|done|case|esac|select|switch|foreach-object|where-object)\b/i,
+  /^(env:|\$env:|function|filter|param|begin|process|end|try|catch|finally|throw|return|break|continue)\b/i,
+  // 注意：`echo` / `cd` / `cls` 之类**不列在这里** —— 它们已由 local.ts 的 PS_ALIASES
+  // 判成「PowerShell 别名，不在 PATH 里是正常的」，而 `echo hi && del x` 这种复合命令
+  // 还需要被 commandLines 抓出来交给 claims.ts 标 unmechanizable（有测试守着这条）。
+  /^(rem|title|pause|color|prompt|ver|verify|vol|shift|goto|call|pushd|popd|setlocal|endlocal|chcp|attrib|assoc|ftype|path|exit|start-sleep)\b/i,
+  /^(new-item|write-host|write-output|out-null|convertto-json|convertfrom-json|get-content|set-content|add-content|copy-item|move-item|remove-item|test-path|join-path|split-path|resolve-path|invoke-webrequest|invoke-restmethod)\b/i,
+]
+function isShellSyntax(cmd: string): boolean {
+  return SHELL_SYNTAX.some((re) => re.test(cmd))
+}
+
 /** 从 shell 代码块里抽出「像是会被执行的命令行」 */
 function commandLines(text: string): string[] {
   const out: string[] = []
@@ -77,6 +104,7 @@ function commandLines(text: string): string[] {
       const cmd = (m ? m[1] : line).trim()
       if (cmd.length <= 2) continue
       if (NOT_A_COMMAND.test(cmd)) continue
+      if (isShellSyntax(cmd)) continue
       // URL、参数续行、变量赋值都不是「可执行程序」：评测实测这些占了剩余假证伪的大头
       if (/^[a-z][\w+.-]*:\/\//i.test(cmd)) continue
       if (/^-/.test(cmd)) continue
@@ -236,6 +264,71 @@ export function turnHadVerification(toolNames: Iterable<string>, allowed: readon
   const set = new Set(allowed)
   for (const name of toolNames) if (set.has(name)) return true
   return false
+}
+
+/** 会被当作「交付文档」的扩展名 */
+const DELIVERABLE_RE = /\.(md|mdx|markdown|txt|rst|adoc)$/i
+/** 这些目录下的东西是日志/产物，不是交付文档（实测 `logs/eval/agent/toolcall-probe.txt` 被误判） */
+const DELIVERABLE_EXCLUDE_RE = /(^|[\\/])(logs?|tmp|temp|\.cache|node_modules|dist|build|out|\.git)([\\/]|$)/i
+/** 能写出文件的工具名 */
+const DOC_WRITER_TOOLS = new Set(['write', 'edit', 'ops_replace', 'str_replace_editor', 'create_file', 'apply_patch'])
+
+/**
+ * 本轮 write/edit 写出的**交付文档**路径。
+ *
+ * 实测坑：`tool/call` 的 `data.arguments` 是 **JSON 字符串**而不是对象，必须 parse 一次
+ * 才能取到 path 字段（我第一次写探针时正是踩了这个，得到「0 轮写了文档」的假结论）。
+ */
+export function writtenDeliverables(events: readonly unknown[], turn: number): string[] {
+  const out = new Set<string>()
+  for (const raw of events) {
+    const ev = raw as { type?: string; data?: any }
+    if (ev?.type !== 'tool/call' || Number(ev.data?.turn) !== turn) continue
+    if (!DOC_WRITER_TOOLS.has(String(ev.data?.name ?? ''))) continue
+    const rawArgs = ev.data?.arguments
+    let args: Record<string, unknown> | null = null
+    if (typeof rawArgs === 'string') {
+      try { args = JSON.parse(rawArgs) as Record<string, unknown> } catch { args = null }
+    } else if (rawArgs && typeof rawArgs === 'object') {
+      args = rawArgs as Record<string, unknown>
+    }
+    const p = args?.file_path ?? args?.path ?? args?.filePath ?? args?.target
+    if (typeof p === 'string' && DELIVERABLE_RE.test(p) && !DELIVERABLE_EXCLUDE_RE.test(p)) out.add(p)
+  }
+  return [...out]
+}
+
+/**
+ * 会话的工作目录 —— **运行时**的权威来源。
+ *
+ * 宿主自己的工具就是这么拿的，两处独立一致：
+ *   `dsh-tool-fs/lib/index.js`:   `function sessionCwd(exec) { return exec.agent?.session.header.cwd }`
+ *   `dsh-tool-bash/lib/index.js`: `const headerCwd = exec.agent?.session.header.cwd`
+ *
+ * 我原先用的是下面这个 `sessionCwd(events)`（在事件流里找 `type === 'session'` 的顶层 `cwd`）——
+ * 那是**会话日志文件**里的形状，不是运行时 agent 的形状。实测后果：两条路径都回落到
+ * `cfg.workspace`（= 宿主进程 cwd = profile 目录），于是 `packageVersion typescript`
+ * 报「本机没有该包」。事件扫描保留为兜底。
+ */
+export function agentWorkspace(agent: unknown): string | null {
+  const cwd = (agent as { session?: { header?: { cwd?: unknown } } } | undefined)?.session?.header?.cwd
+  return typeof cwd === 'string' && cwd.trim() ? cwd : null
+}
+
+/**
+ * 会话的工作目录（**日志事件**里的形状，作为兜底）。
+ *
+ * 会话日志的第一个事件是 `{ type:'session', version:4, id, createdAt, cwd, ... }`
+ * —— `cwd` 是顶层字段，不在 `data` 里（实测）。但运行时 agent 上不一定有这条事件，
+ * 所以优先用 `agentWorkspace(agent)`。
+ */
+export function sessionCwd(events: readonly unknown[]): string | null {
+  for (const raw of events) {
+    const ev = raw as { type?: string; cwd?: unknown }
+    if (ev?.type !== 'session') continue
+    if (typeof ev.cwd === 'string' && ev.cwd.trim()) return ev.cwd
+  }
+  return null
 }
 
 /** 从会话事件里抽出某一 turn 的 assistant 文本与工具名 */

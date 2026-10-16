@@ -55,8 +55,14 @@ export function apply(ctx: Context, config: unknown): void {
   }
 
   if (cfg.verifyTool) {
-    ctx.inject(['tools'], () => {
-      const tools = (ctx as any).tools
+    // 回调的**第一个参数**才是「已经 inject 过的上下文」——必须在它上面取 `tools`。
+    // 闭包捕获外层 ctx 会踩到 cordis 的服务访问规则（reflect.ts: `cannot get property
+    // "tools" without inject`）：服务只落在**声明了 inject 的那个 fiber** 的 store 里，
+    // 外层 ctx 的 fiber 没声明，向上也找不到提供方（`dsh-tools` 是兄弟 fiber，不是祖先）。
+    // 实测症状：宿主只在 stderr 打一行 `dsh-doubt (dsh-doubt): Error: cannot get property
+    // "tools" without inject`，界面上完全看不出来 —— 工具与提示词段都没注册。
+    ctx.inject(['tools'], (toolsCtx: Context) => {
+      const tools = (toolsCtx as unknown as { tools?: { register?: (d: unknown) => unknown } })?.tools
       if (!tools || typeof tools.register !== 'function') return
       tools.register(buildVerifyTool(getConfig))
       log('已注册工具 verify_claims')
@@ -64,8 +70,8 @@ export function apply(ctx: Context, config: unknown): void {
   }
 
   if (cfg.promptSection) {
-    ctx.inject(['systemPrompt'], () => {
-      const systemPrompt = (ctx as any).systemPrompt
+    ctx.inject(['systemPrompt'], (promptCtx: Context) => {
+      const systemPrompt = (promptCtx as unknown as { systemPrompt?: { section?: (s: unknown) => unknown } })?.systemPrompt
       if (!systemPrompt || typeof systemPrompt.section !== 'function') return
       systemPrompt.section({
         name: SECTION_NAME,
@@ -77,12 +83,17 @@ export function apply(ctx: Context, config: unknown): void {
   }
 
   if (cfg.autoVerify) {
+    // Tier C 在**运行期**才用 ctx.subagents，同样不能捕获外层 ctx，否则每次评估都会抛。
+    // 这里把注入后的上下文存下来，服务不存在时回调不会触发 → 如实降级为「无子代理能力」。
+    let subagentCtx: Context | null = null
+    ctx.inject(['subagents'], (c: Context) => { subagentCtx = c })
+
     installDoubtLoop(ctx, {
       getConfig,
       log,
       probe,
       factoredHost: (agent) => {
-        const subagents = (ctx as any).subagents
+        const subagents = (subagentCtx as unknown as { subagents?: { start?: unknown } } | null)?.subagents
         if (!subagents || typeof subagents.start !== 'function') return null
         return { subagents, parent: agent }
       },

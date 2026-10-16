@@ -48,7 +48,25 @@ const iface = configSrc.slice(configSrc.indexOf('export interface DoubtConfig'),
 if (!iface || iface.length < 200) problems.push('没定位到 DoubtConfig 接口，检查失败')
 const declaredKeys = new Set([...iface.matchAll(/^\s{2}([A-Za-z][\w]*)\??:/gm)].map((m) => m[1]))
 const patch = read('cordis.patch.yml')
-const patchKeys = [...patch.matchAll(/^ {4}([A-Za-z][\w]*):/gm)].map((m) => m[1])
+// 新行必须包在顶层 insert: 里，config 的缩进随之变化；按 config: 块自身的缩进取键，
+// 不再硬编码 4 空格（否则加上 insert 包裹后这里会静默变成 0 个键、检查形同虚设）。
+const patchLines = patch.split('\n')
+const cfgLine = patchLines.findIndex((l) => /^\s*config:\s*$/.test(l))
+const patchKeys = []
+if (cfgLine < 0) {
+  problems.push('cordis.patch.yml 里找不到 config: 块')
+} else {
+  const indent = patchLines[cfgLine].match(/^\s*/)[0].length
+  for (let i = cfgLine + 1; i < patchLines.length; i += 1) {
+    const line = patchLines[i]
+    if (!line.trim() || line.trim().startsWith('#')) continue
+    const ind = line.match(/^\s*/)[0].length
+    if (ind <= indent) break
+    const m = new RegExp(`^\\s{${ind}}([A-Za-z][\\w]*):`).exec(line)
+    if (m) patchKeys.push(m[1])
+  }
+}
+if (patchKeys.length === 0) problems.push('cordis.patch.yml 的 config 块里没解析出任何键，检查失效')
 const unknown = patchKeys.filter((k) => !declaredKeys.has(k))
 if (unknown.length > 0) problems.push(`cordis.patch.yml 里有配置类型不认识的键：${unknown.join(', ')}`)
 else notes.push(`patch.yml 的 ${patchKeys.length} 个键都在 DoubtConfig 里`)
@@ -103,6 +121,24 @@ notes.push(`manifest 工具声明：${declaredTools.join(', ')}`)
 const entry = manifest.facets?.host?.entry
 if (!entry || !existsSync(join(root, entry))) problems.push(`manifest entry 不存在：${entry}`)
 else notes.push(`manifest entry 存在：${entry}`)
+
+// 12. patch 必须真的能把新行插进去。
+// 宿主的 applyEntryPatches（dsh-app-boot）把**没有 insert 的顶层条目**当作
+// 「按 id 覆盖已存在的行」；目标不存在时只打一句警告并跳过：
+//   dsh: [dsh-doubt] patch: entry "dsh-doubt" not found
+// 少了 insert 包裹 = 插件装上了却完全不加载。实测 `dsh --dump-config` 可复现。
+const topLevelItems = patch.split(/\n(?=- )/)
+const nonInsertNamed = topLevelItems.filter((item) => /^- (?!insert:)/.test(item) && /^\s{2,}name:/m.test(item))
+if (nonInsertNamed.length > 0) {
+  problems.push('cordis.patch.yml 有顶层非 insert 条目声明了 name：宿主会当作覆盖并跳过，插件不会加载')
+}
+if (!/^- insert:/m.test(patch)) problems.push('cordis.patch.yml 没有顶层 insert:，插件行不会被插入')
+else notes.push('patch.yml 用 insert: 插入新行（宿主 applyEntryPatches 会真正加载）')
+
+// 13. insert 里的 id/name 必须与 package.json 的 name 一致
+const pkgName = pkg.name
+if (!new RegExp(`^\\s+- id:\\s*${pkgName}\\s*$`, 'm').test(patch)) problems.push(`patch.yml 的 insert 里没有 id: ${pkgName}`)
+else notes.push(`insert 的 id 与包名一致：${pkgName}`)
 
 for (const n of notes) console.log(`OK   ${n}`)
 if (problems.length > 0) {

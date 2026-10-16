@@ -35,6 +35,8 @@ export interface DoubtConfig {
   executeAnswerCommands: boolean
   /** 无法核验的断言必须在最终回答里显式标注「未验证」 */
   strictLabeling: boolean
+  /** 交付文档（.md/.txt 等）被写出、但正文没有任何出处标注时，要求补一份逐步骤溯源表 */
+  requireProvenance: boolean
   /** 本机查找 node_modules / package.json 的起点 */
   workspace: string
 
@@ -81,6 +83,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
 
   executeAnswerCommands: false,
   strictLabeling: true,
+  requireProvenance: true,
   workspace: process.cwd(),
 
   maxRounds: 2,
@@ -93,10 +96,18 @@ export const DEFAULT_CONFIG: DoubtConfig = {
     'read', 'ops_inspect_local_file', 'grep', 'ops_grep', 'glob', 'ops_glob',
     'web_search', 'web_fetch', 'verify_claims',
   ],
+  // 注意：verify.ts 比对前会剥掉 .exe/.cmd/.bat 等扩展名，所以这里写裸名即可。
+  // shell 解释器必须在内：argv[0] 传 cmd/powershell 等于自己开一个 shell，
+  // 实测 `cmd.exe /c del <文件>` 真的把文件删了，整个黑名单形同虚设。
+  // 这不影响合法的 `.cmd` 目标（如 npm.cmd）：那种情况是 verify.ts 内部用 cmd.exe
+  // 包装参数，黑名单只看 argv[0]，`npm.cmd` → `npm` 不在列表里。
   denyBinaries: [
     'rm', 'del', 'erase', 'format', 'diskpart', 'mkfs', 'dd',
     'shutdown', 'reboot', 'reg', 'schtasks', 'netsh', 'cipher',
     'vssadmin', 'wevtutil', 'rmdir',
+    'cmd', 'powershell', 'pwsh', 'wscript', 'cscript', 'mshta',
+    'sh', 'bash', 'zsh', 'dash', 'fish', 'ksh',
+    'rundll32', 'regsvr32', 'certutil', 'bitsadmin',
   ],
   timeoutMs: 15_000,
   language: 'auto',
@@ -154,6 +165,7 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
 
     executeAnswerCommands: bool(src.executeAnswerCommands, d.executeAnswerCommands),
     strictLabeling: bool(src.strictLabeling, d.strictLabeling),
+    requireProvenance: bool(src.requireProvenance, d.requireProvenance),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
 
     maxRounds,

@@ -1,5 +1,67 @@
 # 更新日志
 
+## 0.4.0（独立验证驱动的运行期修复 + 溯源闸）
+
+这一轮的每个结论都由**不继承作者推理**的独立验证者复核过：一个专门证伪，一个做变异测试
+（把每处修复逐个改回去，看测试是否真的会失败）。结果是 14 处里 11 处被测试保护、**3 处零覆盖**，
+另有一条 `expr` 的结论被**证伪**。以下按发现顺序记录。
+
+### 新增
+
+- **溯源闸**（`requireProvenance`，默认开）：本轮若 `write`/`edit` 写出了交付文档（`.md`/`.txt`，
+  排除 `logs/`、`tmp/` 等）且正文没有出处小节，则要求补一份逐步骤溯源表：每条要么**有出处**
+  （链接/文档标题/版本号）要么**无依据**，无依据的必须留在表里并显式标注。
+  设计依据：在一份真实 46k 字部署手册上，机械判定只覆盖 21 条断言（20 条判不了），
+  但同一个模型被问一句「所有流程是否都有据可依」后能自己产出 42 项溯源表——能力在、触发器不在。
+  噪音控制：**同一份文档只问一次**（Windows 下路径按大小写不敏感归一），独立预算、一次人工回合最多 4 次，
+  不受 `maxRounds` 影响。实测：126 轮文档密集会话 6 次（每份文档一次，不是每次写入一次）、11 轮编码会话 0 次、
+  手册在溯源附录存在前 1 次/存在后 0 次。
+- `scripts/verify-independent.mjs`（`npm run verify:independent`）：只用**外部裁判**核验本仓库——
+  真实 `dsh` CLI、真实 `semver`、真实 `cordis`、本机会话日志、子进程、守卫单调性；缺解包宿主时如实 SKIP。
+  存在理由：测试和代码是一起写的，「测试通过」是弱证据。
+
+### 修复：运行期接口（前三项是插件此前根本没工作过的原因）
+
+- **插件此前完全没挂载**：`cordis.patch.yml` 的行缺顶层 `insert:`，而宿主 `applyEntryPatches`
+  只在**已有**条目上按 id 覆盖、找不到就 warn+skip。实测：加 `insert:` 后 `dsh --profileX --dump-config`
+  从 2 字节（空）变成 461 字节并含 `- id: dsh-doubt`。
+- **插件此前完全哑掉**：`ctx.inject(['tools'], () => ctx.tools)` 的闭包抓的是**外层** ctx，访问服务抛
+  `cannot get property "tools" without inject`，而该错误只进 stderr、UI 里看不到。改为使用注入回调传入的 ctx。
+- **本机 oracle 一直在查 profile 目录**：`DEFAULT_CONFIG.workspace = process.cwd()` 在**插件加载时**求值，
+  而宿主进程的 cwd 是 `…\.dsh\profiles\desktop`，于是 `packageVersion typescript` 报「本机没有该包」。
+  改为读运行时的 `exec.agent.session.header.cwd`（宿主自己的工具同源：`dsh-tool-fs`、`dsh-tool-bash`
+  两处独立一致），事件扫描降为兜底；工具返回值新增 `workspace: {cwd, source}` 让结果**自证**走了哪条路。
+- **工具输出被宿主整条拒绝**：给返回对象新增字段却没写进 `OUTPUT_SCHEMA`（`additionalProperties: false`）
+  → 每次调用都 `returned invalid output`。补上，并新增「用工具自己的 schema 校验它实际返回值」的契约测试。
+
+### 修复：证伪通道
+
+- **`expr` 曾经能打死/挂死宿主**（独立验证者证伪了上一版修法）：改为在**子进程**里求值，
+  且**判 thenable 与 JSON 序列化全部在 vm 内部**完成。vm 的 `timeout` 只约束 vm 内部，而上一版让宿主在
+  vm 返回之后去读 `value.then` / `JSON.stringify(value)` —— `({get then(){for(;;){}}})`、`({toJSON(){for(;;){}}})`
+  会把宿主挂死；表达式里**丢弃**的 rejection 仍按 Node 默认策略打死进程，且发生在返回 `ok:true` 之后。
+- **自指证据**：`selfPackageRoot()` 比的是**路径**，而「已安装副本 `…\.dsh\plugins\dsh-doubt`」与
+  「仓库 `C:\work\dsh-doubt`」是同一个包的两个路径，前缀比较必然漏 → `symbolExists('normalizeConfig()', 'C:/work/dsh-doubt')`
+  引用插件自己的 `src/config.ts`。改为按 `package.json` 的 `name` 判定（任何副本、任何 junction 都覆盖）。
+- **方法/函数调用不是程序**：`.ps1` 里的 `z.Dispose()`、`foo.Bar(x)` 曾被拆成 argv[0] 拿去 `which` → 假证伪。
+- **另一台机器守卫**：上下文明确是目标服务器/远程主机的路径，不再交本机文件系统判定（只往沉默方向走）。
+- `rangeSatisfied` 对预发布版本与 semver 不一致（21/48 格），且错的方向**偏宽松**（可能假证实）；
+  现在直接返回 `undefined`。
+- `symbolExists` 的 `claim` 曾同时充当「断言描述」与「被搜符号」（活体上整句描述被当符号名搜），
+  新增独立 `signature` 字段。
+- 测试临时文件原先硬编码 `C:\work\dsh-doubt\test\__tmp_*.txt` → 套件不可搬迁、并发会互相删文件
+  （独立验证者 4 进程 6/6 复现 `ENOENT … unlink`）；改为 `os.tmpdir()` + pid。
+
+### 测试
+
+- 补入：交付文档溯源闸（一次/新文档、不重复、有出处小节则不触发、非交付扩展名不触发、ping-pong 硬顶、
+  人工轮重置）、会话工作目录（**真实** `session.header.cwd` 形状 + 事件扫描兜底）、方法调用守卫、
+  另一台机器守卫、设备 CLI 守卫、自指证据、工具输出 schema 契约、`expr` 子进程隔离（含验证者用过的
+  全部恶意载荷，直接在测试进程内跑）。
+- 变异测试判为零覆盖的 3 处（`REMOTE_DEVICE_TOOLS` / `mentionsOtherMachine` / `isShellSyntax`）
+  现已有**真的会失败**的测试；`mentionsOtherMachine` 原先那条测试还因为措辞不含存在性断言而在更早的闸
+  就被丢掉——测试绿得毫无意义，一并修正。
+
 ## 0.3.0（评测驱动的重写）
 
 ### 新增：真实语料评测

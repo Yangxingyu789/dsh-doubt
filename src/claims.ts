@@ -84,6 +84,26 @@ function mentionsDeletion(text: string | undefined, token: string): boolean {
 }
 
 /**
+ * 上下文是否表明这条路径属于**另一台机器**。
+ *
+ * 这是实测出来的最后一类主要假证伪：部署手册里写 `把安装包放到 D:\安装包`、
+ * 驱动目录 `C:\Program Files (x86)\360\`——它们描述的是**目标服务器**的目录结构，
+ * 拿本机文件系统去证伪就是纯粹的假证伪，而这类文档恰恰最该给用户看。
+ *
+ * 方向性保证：命中这里只会把断言降级为「本机判不了」，**绝不会新增任何反驳**。
+ * 代价是可能漏掉「本机确实该有却没有」的少量情况——按本项目的原则，
+ * 宁可判不了，绝不误判。
+ */
+const OTHER_MACHINE_RE = /目标\s*(机|机器|服务器|主机|节点)|服务器(上|端)?|远程|远端|另一台|其他机器|新机器|待部署|部署(到|至|在)|登录(到|上)|云端|虚拟机|容器(里|内|中)|镜像(里|内|中)|on the (server|target|remote)|the (target|remote) (host|machine|server)|after you (ssh|log ?in)|on that (machine|box|host)/i
+
+function mentionsOtherMachine(text: string | undefined, token: string): boolean {
+  if (!text) return false
+  const at = text.indexOf(token)
+  if (at < 0) return false
+  return OTHER_MACHINE_RE.test(text.slice(Math.max(0, at - 220), at + token.length + 220))
+}
+
+/**
  * 回答是否真的在断言「这是个 **npm** 包」。
  * 两轮评测的教训：
  *   1) 裸字 `包` 会命中「包括/包含/打包」→ 139 条配置键被送去 registry 查；
@@ -150,6 +170,12 @@ export function extractClaims(findings: readonly Finding[], opts: { executeAnswe
         }
         if (!assertsExistence(opts.text, f.snippet)) {
           push(f.kind, f.snippet, [], '上下文没有把它当作存在性断言（可能只是被引用的示例），fs 判了也不算证据')
+          break
+        }
+        // 上下文在讲另一台机器（部署手册的目标服务器）→ 本机文件系统判不了。
+        // 只降级为「判不了」，不新增任何反驳。
+        if (mentionsOtherMachine(opts.text, f.snippet)) {
+          push(f.kind, f.snippet, [], '上下文在讲另一台机器（目标服务器/远程主机）的目录，本机文件系统判不了')
           break
         }
         push(f.kind, f.snippet, [{ kind: 'fileExists', path: f.snippet, claim: f.snippet }])

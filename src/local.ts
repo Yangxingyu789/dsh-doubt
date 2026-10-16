@@ -60,6 +60,46 @@ function summarize(kind: string, claim: string, sources: SourceHit[]): OracleRes
   return { kind, claim, ok: supporting.length > 0, noEvidence: sources.length === 0, sources, detail }
 }
 
+/**
+ * 这个候选路径是否落在**插件自己这个包**里。
+ *
+ * 必须按 `package.json` 的 `name` 判定，不能按路径。实测过的失效场景：
+ * 插件从已安装副本加载（`C:\...\.dsh\plugins\dsh-doubt`），会话工作目录是仓库
+ * （`C:\work\dsh-doubt`）—— 两个路径、**同一个包**，路径前缀比较必然漏掉，于是
+ * `symbolExists('normalizeConfig()', 'C:/work/dsh-doubt')` 会引用 `src/config.ts`
+ * 把插件自己的 API「证实」给自己看。这正是 README 声称已修、实际没修住的自指证据。
+ */
+const SELF_PACKAGE_NAME = (() => {
+  try {
+    const pkg = readJson(join(selfPackageRoot(), 'package.json'))
+    return typeof pkg?.name === 'string' ? (pkg.name as string) : null
+  } catch {
+    return null
+  }
+})()
+
+const selfDirCache = new Map<string, boolean>()
+
+/** 从该路径向上找最近的 package.json，看它是不是本插件自己的包 */
+function insideSelfPackage(p: string): boolean {
+  if (!SELF_PACKAGE_NAME) return false
+  let dir = p
+  for (let i = 0; i < 8; i += 1) {
+    const cached = selfDirCache.get(dir)
+    if (cached !== undefined) return cached
+    const pkg = readJson(join(dir, 'package.json'))
+    if (pkg) {
+      const hit = pkg.name === SELF_PACKAGE_NAME
+      selfDirCache.set(dir, hit)
+      return hit
+    }
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return false
+}
+
 /** 从 start 向上找满足条件的目录 */
 function walkUp(start: string, visit: (dir: string) => boolean): string | null {
   let dir = resolve(start)
@@ -86,22 +126,38 @@ export function which(bin: string): string | null {
   if (!cleaned) return null
   if (cleaned.includes('/') || cleaned.includes('\\')) {
     const direct = resolve(cleaned)
-    if (existsSync(direct) && statSync(direct).isFile()) return direct
+    try {
+      if (existsSync(direct) && statSync(direct).isFile()) return direct
+    } catch { /* ignore */ }
   }
   const pathVar = process.env.PATH ?? process.env.Path ?? ''
-  const exts = process.platform === 'win32'
-    ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';')
-    : ['']
-  for (const dir of pathVar.split(process.platform === 'win32' ? ';' : ':')) {
+  const isWin = process.platform === 'win32'
+  const exts = isWin ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT;.COM').split(';').filter(Boolean) : ['']
+
+  // 必须**先试原名**：调用方常常已经写全了扩展名（`npm.cmd`、`npx.cmd`、`tsc.cmd`）。
+  // 只往后拼 PATHEXT 的话只会试 `npm.cmd.EXE` 之类，于是把**就在 PATH 上**的 npm.cmd
+  // 判成「不存在」→ 直接输出假证伪（实测 commandAvailability('npm.cmd') = refuted）。
+  const names: string[] = []
+  const seenName = new Set<string>()
+  const add = (n: string): void => {
+    const k = isWin ? n.toLowerCase() : n
+    if (seenName.has(k)) return
+    seenName.add(k)
+    names.push(n)
+  }
+  add(cleaned)
+  for (const ext of exts) {
+    add(cleaned + ext.toLowerCase())
+    add(cleaned + ext)
+  }
+
+  for (const dir of pathVar.split(isWin ? ';' : ':')) {
     if (!dir) continue
-    for (const ext of exts) {
-      const cand = join(dir, cleaned + ext.toLowerCase())
-      const cand2 = join(dir, cleaned + ext)
-      for (const c of [cand, cand2]) {
-        try {
-          if (existsSync(c) && statSync(c).isFile()) return c
-        } catch { /* ignore */ }
-      }
+    for (const name of names) {
+      const cand = join(dir, name)
+      try {
+        if (existsSync(cand) && statSync(cand).isFile()) return cand
+      } catch { /* ignore */ }
     }
   }
   return null
@@ -115,20 +171,41 @@ export function which(bin: string): string | null {
  */
 const PS_CMDLET_RE = /^(Get|Set|New|Remove|Copy|Move|Rename|Test|Add|Out|Select|Where|ForEach|Measure|Write|Invoke|Start|Stop|Restart|Wait|Import|Export|ConvertFrom|ConvertTo|Format|Clear|Read|Install|Update|Push|Pop|Use)-[A-Z]\w+$/
 const PS_ALIASES = new Set(['irm', 'iwr', 'ise', 'ips', 'gcm', 'gci', 'gps', 'ps', 'sls', 'cat', 'cp', 'ls', 'mv', 'rm', 'echo', 'cd', 'cls', 'clear', 'write', 'select', 'where', 'foreach', 'measure', 'sort', 'group'])
-const POSIX_ONLY = new Set(['df', 'free', 'lscpu', 'lsblk', 'top', 'htop', 'grep', 'awk', 'sed', 'du', 'ls', 'cp', 'mv', 'rm', 'nvidia-smi', 'journalctl', 'systemctl', 'apt', 'apt-get', 'yum', 'dnf', 'pacman', 'ssh', 'scp', 'rsync', 'python3', 'pip3', 'bash', 'sh', 'zsh', 'vllm', 'cuda', 'tr', 'cut', 'sort', 'uniq', 'head', 'tail', 'wc', 'xargs', 'chmod', 'chown', 'ln', 'touch', 'find', 'which'])
+const POSIX_ONLY = new Set(['df', 'free', 'lscpu', 'lsblk', 'top', 'htop', 'grep', 'awk', 'sed', 'du', 'ls', 'cp', 'mv', 'rm', 'nvidia-smi', 'journalctl', 'systemctl', 'apt', 'apt-get', 'yum', 'dnf', 'pacman', 'apk', 'zypper', 'brew', 'launchctl', 'ssh', 'scp', 'rsync', 'python3', 'pip3', 'bash', 'sh', 'zsh', 'vllm', 'cuda', 'tr', 'cut', 'sort', 'uniq', 'head', 'tail', 'wc', 'xargs', 'chmod', 'chown', 'ln', 'touch', 'find', 'which', 'sudo', 'service', 'systemd'])
+
+/**
+ * Device/vendor CLIs run on ANOTHER machine (the NPU/GPU server), by definition.
+ * Measured: the only `refuted` verdict on a real 46k-char deployment manual was
+ * `npu-smi info` -> "npu-smi not on PATH". Asserting the answer is wrong because
+ * this Windows workstation lacks the Ascend tool is a pure false refutation.
+ */
+const REMOTE_DEVICE_TOOLS = new Set(['npu-smi', 'nvidia-smi', 'rocm-smi', 'hccn_tool', 'ibstat', 'ibv_devinfo', 'mlxconfig', 'ascend-dmi', 'dcmi', 'ipmitool', 'racadm'])
 
 function notApplicableHere(bin: string): string | null {
-  const bare = bin.replace(/\.(exe|cmd|bat)$/i, '')
+  // 末尾的点要先剥掉：`echo.` 是批处理里「输出空行」的写法，不是叫 echo. 的程序
+  const bare = bin.replace(/\.(exe|cmd|bat)$/i, '').replace(/\.+$/, '')
+  if (REMOTE_DEVICE_TOOLS.has(bare.toLowerCase())) return 'Device/vendor CLI: it belongs to another machine (the NPU/GPU server), so missing it here proves nothing'
   if (PS_CMDLET_RE.test(bare)) return 'PowerShell cmdlet 不在 PATH 里是正常的'
   if (PS_ALIASES.has(bare.toLowerCase()) && process.platform === 'win32') return 'PowerShell 别名不在 PATH 里是正常的'
   if (process.platform === 'win32' && POSIX_ONLY.has(bare.toLowerCase())) return 'POSIX 工具：这条命令大概是在讲另一台机器（Linux）'
   return null
 }
 
+/**
+ * `z.Dispose()` / `foo.Bar(x)` 这类是**脚本内部的方法调用**，不是可执行程序。
+ * 实测：`.ps1` 代码块里的 `z.Dispose()` 被拆成 argv[0] 拿去 `which`，判「不在 PATH 中」→ refuted。
+ * 这里的判定只往「沉默」方向走：命中即 noEvidence，绝不新增反驳。
+ * 注意不匹配盘符路径（`C:\…(x86)…` 以 `C:` 开头，冒号不在字符类里），避免误伤真实程序路径。
+ */
+const METHOD_CALL_RE = /^[A-Za-z_$][\w$.]*\s*[({]/
+
 /** 命令里的程序是否存在（默认不执行回答里的命令） */
 export function commandAvailability(claim: string, argv: readonly string[]): OracleResult {
   const bin = argv[0] ?? ''
   if (!bin) return noEvidence('commandAvailability', claim, '空命令')
+  if (METHOD_CALL_RE.test(bin)) {
+    return noEvidence('commandAvailability', claim, `${bin} 是方法/函数调用，不是可执行程序名；本机无法据此核验`)
+  }
   const na = notApplicableHere(bin)
   if (na) return noEvidence('commandAvailability', claim, `${bin} 不在 PATH 中，但${na}；不能据此断言回答错了`)
   const found = which(bin)
@@ -165,7 +242,9 @@ export function packageVersion(claim: string, name: string, cwd: string): Oracle
     const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
     let range: string | undefined
     for (const f of fields) range ??= pkg[f]?.[bare]
-    if (range) sources.push({ label: join(declared, 'package.json'), value: `声明范围 ${range}`, ok: true })
+    // 弱证据：**声明了依赖 ≠ 装上了**。实测「`left-pad` 已装在 node_modules」这条断言，
+    // 在本机根本没装的情况下被 package.json 的声明范围「证实」——典型的假证实。
+    if (range) sources.push({ label: join(declared, 'package.json'), value: `声明范围 ${range}（声明不等于已安装）`, ok: true, weak: true })
   }
 
   if (!sources.some((s) => s.ok)) return noEvidence('packageVersion', claim, `本机没有该包（${bare}）；除非回答断言它装在本机，否则不构成反驳`)
@@ -229,6 +308,12 @@ function cmp(a: number[], b: number[]): number {
  * 覆盖 `*` / `x` / 精确 / `^` / `~` / `>= > < <=` / `||`；其余协议一律中性。
  */
 export function rangeSatisfied(range: string, version: string): boolean | undefined {
+  // 预发布版本一律判不了：node-semver 的规则是「预发布版本只有在范围的比较子里
+  // 出现同一个 [major,minor,patch] 时才可能满足」，我们这套简单比较器没实现它。
+  // 独立验证者实测：21/48 个预发布格子与 semver 不一致，且错的方向**偏宽松**
+  // （`^1.2.3` vs `1.2.3-beta.1` 我们判 true，semver 判 false）——那会变成假证实。
+  // 所以这里直接中性化，宁可判不了。
+  if (version.includes('-')) return undefined
   const v = parseVer(version)
   if (!v) return undefined
   const r = range.trim()
@@ -244,39 +329,54 @@ export function rangeSatisfied(range: string, version: string): boolean | undefi
   return false
 }
 
-/** 宽松解析：允许 `4` / `4.1` / `4.x` 这类缺位写法，缺的补 0 */
-function parseLoose(v: string): number[] | null {
-  const m = /^(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?(?:[-+][\w.]+)?$/.exec(v.trim())
+/**
+ * 宽松解析：允许 `4` / `4.1` / `4.x` 这类缺位写法，缺的补 0。
+ * `width` = 明确写了几个数字位，比较运算符要用它决定上界（见 satisfiesPart）。
+ */
+function parseLooseWide(v: string): { nums: number[]; width: number } | null {
+  const m = /^(\d+)(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?(?:[-+][\w.]+)?$/.exec(v.trim())
   if (!m) return null
-  return [Number(m[1]), m[2] && /^\d+$/.test(m[2]) ? Number(m[2]) : 0, m[3] && /^\d+$/.test(m[3]) ? Number(m[3]) : 0]
+  const isNum = (s: string | undefined): boolean => s !== undefined && /^\d+$/.test(s)
+  const nums = [Number(m[1]), isNum(m[2]) ? Number(m[2]) : 0, isNum(m[3]) ? Number(m[3]) : 0]
+  const width = isNum(m[3]) ? 3 : isNum(m[2]) ? 2 : 1
+  return { nums, width }
 }
 
 function satisfiesPart(part: string, v: number[]): boolean | undefined {
   if (!part || part === '*' || part === 'x') return true
   const op = /^(>=|<=|>|<|=)\s*/.exec(part)
   if (op) {
-    const target = parseLoose(part.slice(op[0].length))
-    if (!target) return undefined
-    const c = cmp(v, target)
+    const parsed = parseLooseWide(part.slice(op[0].length))
+    if (!parsed) return undefined
+    const { nums: t, width } = parsed
+    const c = cmp(v, t)
+    // 部分版本号在 node-semver 里有**上界**语义，直接拿补 0 后的三元组比会判错：
+    //   `<=1.2` 是 `<1.3.0`（1.2.9 满足）、`<=4` 是 `<5.0.0`、`>1.2` 是 `>=1.3.0`。
+    // 实测 `^0` / `<=1.2` / `<=4` 这一批曾与 node-semver 结论相反 → 满足的声明被判「不满足」→ 假证伪。
+    const upper = (): number[] => (width === 2 ? [t[0], t[1] + 1, 0] : [t[0] + 1, 0, 0])
     switch (op[1]) {
       case '>=': return c >= 0
-      case '<=': return c <= 0
-      case '>': return c > 0
+      case '>': return width >= 3 ? c > 0 : cmp(v, upper()) >= 0
       case '<': return c < 0
-      default: return c === 0
+      case '<=': return width >= 3 ? c <= 0 : cmp(v, upper()) < 0
+      default: return width >= 3 ? c === 0 : cmp(v.slice(0, width), t.slice(0, width)) === 0
     }
   }
-  const caret = /^\^\s*(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/.exec(part)
+  const caret = /^\^\s*(\d+)(?:\.(\d+|[xX*]))?(?:\.(\d+|[xX*]))?/.exec(part)
   if (caret) {
-    const major = Number(caret[1])
-    const minorRaw = caret[2]
-    const target = parseLoose(`${major}.${minorRaw && /^\d+$/.test(minorRaw) ? minorRaw : 0}.${caret[3] && /^\d+$/.test(caret[3]) ? caret[3] : 0}`)
-    if (!target) return undefined
-    if (cmp(v, target) < 0) return false
-    // caret 不改动最左边的非零位
-    if (major > 0) return v[0] === major
-    if (target[1] > 0) return v[0] === 0 && v[1] === target[1]
-    return v[0] === 0 && v[1] === target[1] && v[2] === target[2]
+    const spec = [caret[1], caret[2], caret[3]].filter((x) => x !== undefined).join('.')
+    const parsed = parseLooseWide(spec)
+    if (!parsed) return undefined
+    const { nums: t, width } = parsed
+    if (cmp(v, t) < 0) return false
+    // caret 允许改动**最左边的非零位**：
+    //   ^1.2.3 → <2.0.0    ^0.5 → <0.6.0    ^0.0.3 → <0.0.4
+    //   ^0 / ^0.x → <1.0.0                ^0.0 / ^0.0.x → <0.1.0
+    if (t[0] > 0) return v[0] === t[0]
+    if (width === 1) return v[0] === 0
+    if (t[1] > 0) return v[0] === 0 && v[1] === t[1]
+    if (width === 2) return v[0] === 0 && v[1] === 0
+    return v[0] === 0 && v[1] === 0 && v[2] === t[2]
   }
   const tilde = /^~\s*(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/.exec(part)
   if (tilde) {
@@ -343,9 +443,11 @@ export function versionClaim(claim: string, cwd: string, name?: string): OracleR
     return summarize('versionClaim', claim, sources)
   }
 
-  // 没定位到包名：只问「本机有没有任何包是这个版本」，找不到就承认无法判断
+  // 没定位到包名：只问「本机有没有任何包是这个版本」，找不到就承认无法判断。
+  // 找到了也只能算**弱证据**：「本机碰巧有个包版本号相同」跟断言说的东西大概率无关
+  // （实测：断言「Linux 内核 5.9.3」被本机的 typescript@5.9.3「证实」——假证实）。
   const holder = findInstalledByVersion(cwd, claimed)
-  if (holder) sources.push({ label: 'node_modules', value: `已安装 ${holder}@${claimed}`, ok: true })
+  if (holder) sources.push({ label: 'node_modules', value: `本机恰好有 ${holder}@${claimed}，但与断言指代物未必相同`, ok: true, weak: true })
   if (sources.length === 0) {
     return noEvidence('versionClaim', claim, `断言里没定位到包名，本机也没有任何包是 ${claimed}；无法判断（不猜）`)
   }
@@ -394,6 +496,8 @@ export function symbolExists(claim: string, cwd: string): OracleResult {
       if (strong.length >= 3) return
       if (entry === 'node_modules' || entry.startsWith('.')) continue
       const full = join(dir, entry)
+      // 自指证据：插件自己的包（仓库 / 已安装副本 / 它们的 junction）一律不算证据
+      if (insideSelfPackage(full)) continue
       let st
       try {
         st = statSync(full)

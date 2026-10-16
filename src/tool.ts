@@ -6,7 +6,43 @@
  */
 
 import type { DoubtConfig } from './config.js'
+import { agentWorkspace, sessionCwd } from './scanner.js'
 import { runCheck, type Check, type CheckOutcome } from './verify.js'
+
+/**
+ * 当前会话的工作目录。
+ *
+ * 权威来源是 `exec.agent.session.header.cwd` —— 宿主自己的工具就是这么拿的
+ * （`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294`，两处独立一致）。
+ * 我上一版用的是「在 `snapshotEvents()` 里找 `type === 'session'` 的事件」，那是**日志文件**
+ * 的形状而不是运行时形状，实测在活体上回落到 profile 目录。事件扫描作为兜底保留。
+ *
+ * 返回值带 `source`：工具结果自己就能证明走了哪条路，不用再靠推断。
+ */
+const agentWorkspaceCache = new WeakMap<object, { cwd: string; source: string } | null>()
+function resolveWorkspace(exec: { agent?: unknown } | undefined, fallback: string): { cwd: string; source: string } {
+  const agent = exec?.agent
+  if (agent && typeof agent === 'object') {
+    const cached = agentWorkspaceCache.get(agent as object)
+    if (cached !== undefined) return cached ?? { cwd: fallback, source: 'cfg.workspace' }
+    let found: { cwd: string; source: string } | null = null
+    const header = agentWorkspace(agent)
+    if (header) found = { cwd: header, source: 'exec.agent.session.header.cwd' }
+    if (!found) {
+      try {
+        const session = (agent as { session?: { snapshotEvents?: () => unknown[]; events?: unknown[] } }).session
+        const events = session?.snapshotEvents?.() ?? session?.events ?? []
+        const scanned = sessionCwd(events)
+        if (scanned) found = { cwd: scanned, source: 'session event scan' }
+      } catch {
+        found = null
+      }
+    }
+    agentWorkspaceCache.set(agent as object, found)
+    return found ?? { cwd: fallback, source: 'cfg.workspace' }
+  }
+  return { cwd: fallback, source: 'cfg.workspace' }
+}
 
 /** ctx.tools.register 接受的最小定义形状 */
 export interface PlainToolDefinition {
@@ -50,6 +86,8 @@ const PARAMETERS = {
           url: { type: 'string', description: 'httpStatus：要请求的 URL' },
           expectStatus: { type: 'integer', description: 'httpStatus：期望状态码，默认 2xx' },
           source: { type: 'string', description: 'expr：在空沙箱里求值的 JS 表达式（无 require/process）' },
+          signature: { type: 'string', description: 'symbolExists：要查找的符号签名，例如 `z.Dispose()` 或 `foo.Bar(x)`。**与 claim 分开写**——claim 用来描述这条断言；挤在一起会把整句话当符号名搜。' },
+          cwd: { type: 'string', description: '本机 oracle（packageVersion / versionClaim / symbolExists）与相对路径的查找起点。默认自动取当前会话的工作目录；只有要查别的仓库时才需要显式给。' },
           actual: { type: 'string', description: 'textEquals：实际文本' },
           expected: { type: 'string', description: 'textEquals：期望文本' },
         },
@@ -65,6 +103,18 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     summary: { type: 'string', description: '一行总结：通过/失败条数' },
+    // 本机 oracle 实际用的查找起点与来源。放出来是为了让结果**自证**走了哪条路，
+    // 不用再靠推断 —— 上一次正是靠它定位到 header 与事件扫描的差别。
+    workspace: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        cwd: { type: 'string', description: '本机 oracle 的查找起点' },
+        source: { type: 'string', description: '起点来源：显式 cwd / exec.agent.session.header.cwd / 事件扫描 / cfg.workspace' },
+      },
+      required: ['cwd', 'source'],
+    },
+    failed: { type: 'integer', description: '失败的条数' },
     results: {
       type: 'array',
       items: {
@@ -102,8 +152,13 @@ export function buildVerifyTool(getConfig: () => DoubtConfig): PlainToolDefiniti
       schema: OUTPUT_SCHEMA,
       render: (_args, value) => [{ type: 'text', text: JSON.stringify(value, null, 2) }],
     },
-    async execute(args: any, exec: { signal?: AbortSignal }) {
+    async execute(args: any, exec: { signal?: AbortSignal; agent?: unknown }) {
       const cfg = getConfig()
+      // 本机 oracle 的查找起点：显式 cwd > 当前会话的工作目录 > 配置里的 workspace。
+      // 不给的话会落到宿主进程的 cwd（= profile 目录），实测 `packageVersion typescript`
+      // 会返回「本机没有该包」——而它其实装在用户的项目里。
+      const explicit = typeof args?.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : null
+      const resolved = explicit ? { cwd: explicit, source: 'explicit args.cwd' } : resolveWorkspace(exec, cfg.workspace)
       const rawChecks = Array.isArray(args?.checks) ? args.checks : []
       const checks = rawChecks.slice(0, 12) as Check[]
       const results: CheckOutcome[] = []
@@ -115,9 +170,16 @@ export function buildVerifyTool(getConfig: () => DoubtConfig): PlainToolDefiniti
         results.push(await runCheck(check, {
           timeoutMs: cfg.timeoutMs,
           denyBinaries: cfg.denyBinaries,
+          cwd: resolved.cwd,
         }))
       }
-      return { summary: summarize(results), results }
+      const failed = results.filter((r) => !r.ok).length
+      return {
+        summary: `${summarize(results)}（本机 oracle 的查找起点：${resolved.cwd} —— 来源 ${resolved.source}）`,
+        workspace: resolved,
+        failed,
+        results,
+      }
     },
   }
 }

@@ -1,28 +1,40 @@
 # dsh-doubt 自带的 patch 层。
-# 用户想改配置，就在 profile 的 cordis.patch.yml 里加同 id 条目覆盖（后加载优先）。
-- id: dsh-doubt
-  name: "dsh-doubt"
-  config:
-    enabled: true
-    verifyTool: true
-    promptSection: true
+#
+# 新行必须包在顶层 `insert:` 里：宿主的 applyEntryPatches 把「没有 insert 的条目」当作
+# **按 id 覆盖已存在的行**，找不到目标就只打一句警告并跳过：
+#   dsh: [dsh-doubt] patch: entry "dsh-doubt" not found
+# 之前这里少了 insert 包裹，实测 `dsh --profile test --dump-config` 完全不会插入该行，
+# 插件根本不会加载（verify_claims、提示词段、自动取证循环全都不会出现）。
+#
+# 用户想改配置，就在 profile 的 cordis.patch.yml 里加同 id 条目覆盖（后加载优先）：
+#   - id: dsh-doubt
+#     config: { ... }        # 注意：覆盖是整体替换 config，不是深合并
+- insert:
+    - id: dsh-doubt
+      name: "dsh-doubt"
+      config:
+        enabled: true
+        verifyTool: true
+        promptSection: true
 
-    # Tier A/B：插件自己取证，注入实测结果（不是要求模型「再检查一遍」）
-    autoVerify: true
-    requireSources: 2
-    onlineTimeoutMs: 8000
+        # Tier A/B：插件自己取证，注入实测结果（不是要求模型「再检查一遍」）
+        autoVerify: true
+        requireSources: 2
+        onlineTimeoutMs: 8000
 
-    # Tier C：离线且无判据时，无草稿上下文独立重推导 + 多数投票
-    factored: true
-    factoredVotes: 3
-    factoredProvider: spawn
+        # Tier C：离线且无判据时，无草稿上下文独立重推导 + 多数投票
+        factored: true
+        factoredVotes: 3
+        factoredProvider: spawn
 
-    # 安全：默认不执行回答里出现的命令，只验证程序是否存在
-    executeAnswerCommands: false
-    strictLabeling: true
+        # 安全：默认不执行回答里出现的命令，只验证程序是否存在
+        executeAnswerCommands: false
+        strictLabeling: true
+        # 交付文档（.md/.txt）写出但正文没有出处标注时，要求补一份逐步骤溯源表
+        requireProvenance: true
 
-    maxRounds: 2
-    minScore: 6
-    maxFindings: 8
-    minAnswerChars: 240
-    language: auto
+        maxRounds: 2
+        minScore: 6
+        maxFindings: 8
+        minAnswerChars: 240
+        language: auto

@@ -129,6 +129,59 @@ export function buildRecheckText(
   return `${head}\n${lines.join('\n')}\n\n${lang === 'zh' ? '要求：' : 'Requirements:'}\n${rules}`
 }
 
+export interface ProvenanceSectionInput {
+  files: readonly string[]
+  score: number
+  findings: readonly { kind: string; snippet: string }[]
+}
+
+/**
+ * 交付文档的**溯源要求**。
+ *
+ * 这不是「再想想你确定吗」——文献里那种 intrinsic self-correction 会让结果变差。
+ * 它要求的是一份**具体产物**：逐步骤溯源表。
+ *
+ * 依据来自实测：同一个模型在被问「所有流程是否都有据可依」时，能自己给出
+ * 42 项 / 9 类（纯官方 13、官方其他产品线 2、官方+社区 1、官方+实测 1、纯社区 1、
+ * 纯实测 2、工程实践 13、未验证 7、混合 2）的溯源表——**能力在，缺的只是在正确的
+ * 时机自动要一次**。所以这里不判对错，只强制披露。
+ */
+export function buildProvenanceText(input: ProvenanceSectionInput, lang: Lang): string {
+  const { files, score, findings } = input
+  const fileList = files.map((f) => `- ${f}`).join('\n')
+  const kinds = findings.slice(0, 6).map((f) => `- (${f.kind}) ${f.snippet}`).join('\n')
+  if (lang === 'zh') {
+    return [
+      '[dsh-doubt 溯源要求] 你这一轮写出了交付文档，但正文里没有任何出处标注：',
+      fileList,
+      '',
+      `扫描到风险分 ${score} 的具体断言（节选，不是全部）：`,
+      kinds,
+      '',
+      '要求（这不是让你「再检查一遍」，是要你补一个具体产物）：',
+      '1. 在文档里加一节「逐步骤溯源表」，按步骤/条目逐条列出依据。',
+      '2. 依据只有两类：**有出处**（给出可点的官方链接、文档标题或版本号）／**无依据**（工程经验或推测）。',
+      '3. 无依据的条目必须留在表里并显式标注；不许删掉，也不许用「一般」「应该」糊过去。',
+      '4. 表里凡是能机械核对的（链接是否可达、版本号是否对得上、文件/路径是否存在），先核对再写进「有出处」。',
+      '5. 只补这一节和必要的修正，不要重写全文。',
+    ].join('\n')
+  }
+  return [
+    '[dsh-doubt provenance] You wrote a deliverable document this turn, but the body carries no source labels:',
+    fileList,
+    '',
+    `Specific assertions scanned (risk score ${score}), excerpt only:`,
+    kinds,
+    '',
+    'Requirements (this is not "check again" — it asks for one concrete artifact):',
+    '1. Add a "step-by-step provenance" section listing the basis for every step/item.',
+    '2. Only two categories: **sourced** (clickable official link, doc title, or version) / **unsourced** (engineering experience or inference).',
+    '3. Keep unsourced items in the table and label them explicitly; do not drop them and do not soften them with "generally".',
+    '4. For anything mechanically checkable (link reachable, version matches, file/path exists), check it before calling it sourced.',
+    '5. Add that section and only the necessary corrections; do not rewrite the whole document.',
+  ].join('\n')
+}
+
 /** 系统提示词段：说明分层取证策略与硬性禁令 */
 export function promptSection(lang: Lang, opts: { requireSources: number } = { requireSources: 2 }): string {
   return lang === 'zh'

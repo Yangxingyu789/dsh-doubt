@@ -32,15 +32,32 @@ export interface FactoredOutcome {
   reason?: string
 }
 
-/** 归一化：把「是的，存在 / yes / 确认」压成同一类 */
+/**
+ * 归一化：把「是的，存在 / yes / 确认」压成同一类。
+ *
+ * 关键：ASCII 的 yes/no 必须带**词边界**。原来写的是 `^(no|not|false|…)`，
+ * 于是 `"Node.js v24.21.0 is the runtime"` 被当成否定（`no` 命中了 `Node`），
+ * 三个正确的回答会一致投出 negative；`"Yes, I know the version"` 里的 `know`
+ * 也会命中 `no` 被判否定。这类误判会直接反转 Tier C 的多数票。
+ */
+const AFFIRM_HEAD_RE = /^(yes|y|true|correct)\b/
+const AFFIRM_CJK_HEAD_RE = /^(存在|是|对|确认|成立|可以|能)/
+const NEG_HEAD_RE = /^(no|not|false|none|never)\b/
+const NEG_CJK_HEAD_RE = /^(不存在|否|错|不成立|不能|无法)/
+// `存在` / `成立` 前面可能是 `不`：`不存在这个路径` 必须判否定，
+// 所以正向的裸中文词也要加否定前瞻，否则两边同时命中 → 退化成一坨原文，票就散了。
+const AFFIRM_INLINE_RE = /(^|[\s,。])(yes|true)\b|\b(exists|present|installed|available)\b|(?<!不)存在|(?<!不)成立/
+const NEG_INLINE_RE = /\b(not|no|false)\b|不存在|错误|不成立|不能|无法/
+
 export function normalizeAnswer(text: string): string {
   const t = text.trim().toLowerCase()
   if (!t) return ''
-  if (/^(yes|y|true|correct|存在|是|对|确认|成立|可以|能)/.test(t) || /(^|[\s,。])(yes|true|存在|是|对|成立)/.test(t.slice(0, 40))) {
-    if (/(not|no|不存在|错误|不成立|不能|无法)/.test(t.slice(0, 60))) return 'negative'
-    return 'affirmative'
-  }
-  if (/^(no|not|false|不存在|否|错|不成立|不能|无法)/.test(t)) return 'negative'
+  const head = t.slice(0, 60)
+  const negative = NEG_HEAD_RE.test(t) || NEG_CJK_HEAD_RE.test(t) || NEG_INLINE_RE.test(head)
+  const affirmative = AFFIRM_HEAD_RE.test(t) || AFFIRM_CJK_HEAD_RE.test(t) || AFFIRM_INLINE_RE.test(head)
+  if (negative && !affirmative) return 'negative'
+  if (affirmative && !negative) return 'affirmative'
+  // 两边都命中 = 语义含糊（例如「对，但不存在」）→ 不硬判，落到下面的取值分支
   // 版本号 / 路径 / 数字类答案：取第一个可比较 token（v1.2.3 与 1.2.3 必须归一到同一票）
   const m = /(v?\d+\.\d+(?:\.\d+)?)|([A-Za-z]:\\[\w\\.-]+|\/[\w./-]+)/.exec(t)
   if (m) return (m[1] ?? m[2] ?? t.slice(0, 60)).replace(/^v(?=\d)/, '')
@@ -69,9 +86,10 @@ export async function factoredCheck(
   const votes: FactoredVote[] = []
   for (let i = 0; i < opts.votes; i += 1) {
     let run: any
+    let timer: ReturnType<typeof setTimeout> | undefined
     try {
       const controller = new AbortController()
-      const timer = setTimeout(() => controller.abort(), opts.timeoutMs)
+      timer = setTimeout(() => controller.abort(), opts.timeoutMs)
       run = await host.subagents.start(opts.provider, {
         label: `dsh-doubt-factored-${i + 1}`,
         // 自包含提问：不含草稿，避免 CoVe 说的「复制同一幻觉」
@@ -80,7 +98,6 @@ export async function factoredCheck(
         signal: controller.signal,
       })
       const result = await run.result
-      clearTimeout(timer)
       const raw = firstText(result?.output)
       const normalized = normalizeAnswer(raw)
       if (normalized) votes.push({ raw: raw.slice(0, 200), normalized })
@@ -94,6 +111,8 @@ export async function factoredCheck(
         reason: `subagent 调用失败：${String(e instanceof Error ? e.message : e)}`,
       }
     } finally {
+      // timer 必须在 finally 里清：start() 抛错时原来的 clearTimeout 永远走不到 → 定时器泄漏
+      if (timer) clearTimeout(timer)
       try {
         await run?.dispose?.()
       } catch { /* 忽略清理失败 */ }
