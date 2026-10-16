@@ -1,5 +1,7 @@
 # dsh-doubt
 
+<img src="assets/icon.png" alt="dsh-doubt 图标" width="128">
+
 **用分层取证替代「你确定吗」。**
 
 模型第一遍回答经常不严谨：命令没跑过、路径没确认、版本号是记忆的、API 签名是编的。你只能反复追问「你确定吗」——它每次真去查都能查出问题，于是一个可靠结论要问好几次。
@@ -78,7 +80,7 @@ dsh plugin --profile desktop add dsh-doubt
 离线（不联网）：
 
 ```powershell
-git clone https://github.com/<你的GitHub账号>/dsh-doubt.git
+git clone https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install --offline
 node scripts/install-local.mjs --dry     # 先看会改什么

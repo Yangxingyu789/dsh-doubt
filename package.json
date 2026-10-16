@@ -31,6 +31,9 @@
     "lib",
     "cordis.patch.yml",
     "dsh-plugin.json",
+    "assets/icon.png",
+    "assets/icon-256.png",
+    "assets/icon.ico",
     "README.md",
     "README.zh-CN.md",
     "CHANGELOG.md",
@@ -72,9 +75,9 @@
     },
     "install": {
       "preferred": "tarball",
-      "tarball": "https://github.com/<你的GitHub账号>/dsh-doubt/archive/refs/heads/main.tar.gz",
-      "zip": "https://github.com/<你的GitHub账号>/dsh-doubt/archive/refs/heads/main.zip",
-      "git": "https://github.com/<你的GitHub账号>/dsh-doubt.git"
+      "tarball": "https://github.com/Yangxingyu789/dsh-doubt/archive/refs/heads/main.tar.gz",
+      "zip": "https://github.com/Yangxingyu789/dsh-doubt/archive/refs/heads/main.zip",
+      "git": "https://github.com/Yangxingyu789/dsh-doubt.git"
     }
   },
   "peerDependencies": {

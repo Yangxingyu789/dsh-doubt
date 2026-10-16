@@ -1,5 +1,7 @@
 # dsh-doubt
 
+<img src="assets/icon.png" alt="dsh-doubt icon" width="128">
+
 **Tiered evidence gathering instead of asking "are you sure?".**
 
 A model's first answer is often sloppy: the command was never run, the path was never confirmed, the version came from memory, the API signature was invented. So you ask "are you sure?" several times — and every time it actually checks, it finds a problem.
@@ -78,7 +80,7 @@ dsh plugin --profile desktop add dsh-doubt
 Offline:
 
 ```bash
-git clone https://github.com/<你的GitHub账号>/dsh-doubt.git
+git clone https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install --offline
 node scripts/install-local.mjs --dry
