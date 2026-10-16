@@ -294,6 +294,12 @@ npm run verify          # tsc 检查 + 构建 + 6 套测试
 | 11 | 约 98.6% 的轮次被「已经核验过」那道闸压掉 | **无依据——本人计数** | 用临时脚本在本机会话日志上统计，脚本已删除 |
 | 12 | 真实 46k 字手册上的证伪：`{"refuted":1,"unverifiable":20}` → 修完 `{"unverifiable":21}` | **无依据——本人实测** | 同一个已删除的 harness；那唯一一条证伪是 `npu-smi info`，它本身就是错的（设备 CLI 属于目标机器） |
 | 13 | 端到端错误率差值（开/关插件对比） | **无依据——没测** | 上面「已证实 / 未证实」里已声明未测；需要等推理成本的四个对照组 |
+| 14 | 顶部图标 `assets/icon.png` 是 512×512 PNG，另有 256×256 PNG 与多尺寸 `.ico` | **有出处** | 用 Pillow 12.3.0 实测读回：`icon.png → (512, 512)`、`icon-256.png → (256, 256)`、`icon.ico → {16, 24, 32, 48, 64, 128, 256}` |
+| 15 | 图标由 `assets/make-icon.py` 生成（Pillow，4× 超采样，LANCZOS 下采样） | **有出处** | 已提交的脚本实测含 `from PIL import Image, ImageDraw`、`SS = 4`、`LANCZOS`（三次 grep 均为 `True`）；PNG/ICO 已随仓库提交，重跑脚本可复现 |
+| 16 | `package.json` 的 `files` 打包这三张图标 | **有出处** | `node -e "console.log(require('./package.json').files)"` 实测输出 `["lib","cordis.patch.yml","dsh-plugin.json","assets/icon.png","assets/icon-256.png","assets/icon.ico","README.md","README.zh-CN.md","CHANGELOG.md","LICENSE"]` |
+| 17 | 本 README 的 clone 地址指向 `github.com/Yangxingyu789/dsh-doubt` | **有出处** | 占位符 `<你的GitHub账号>` 恰好替换 5 处（README.md 1、README.zh-CN.md 1、package.json 3），残留 0 处；`git remote -v` 的 `origin` 是同一地址 |
+| 18 | 该仓库确实存在，且写这张表时是**私有**的 | **有出处** | 用本机已登录的浏览器会话实测加载：HTTP 200、标题 `Yangxingyu789/dsh-doubt: …`、页面含 `svg.octicon-lock` 与 `Private` 字样、无 `Public`；另一个独立来源：匿名 `GET https://api.github.com/repos/Yangxingyu789/dsh-doubt` 返回 **404** |
+| 19 | 它目前仍是空仓库（还没有推送成功） | **有出处** | 同一页面命中 GitHub 的空仓库引导文案（`…or push an existing repository`）；本地提交 `7e3d42b` 存在，但 push 尚未完成 |
 
 如果你希望第 8、10、11、12 条变成「有出处」，诚实的做法只有两条：(a) 提交一份**脱敏后**的语料
 （去掉会话 ID 与路径），让这些数字可重建；或 (b) 重新推导一遍，并写明测于哪个 commit。
