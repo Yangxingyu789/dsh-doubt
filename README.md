@@ -296,6 +296,36 @@ The last row is the one to remember: **only ~7% of the claims in real answers ar
 
 ---
 
+## Provenance of the claims in this README
+
+This project's whole thesis is that a claim should carry its basis. So the README is held to
+its own standard: every load-bearing claim below is either **sourced** (verifiable from a file
+in this repo, a host source line, or a command you can run) or **unsourced** (my own
+measurement or engineering judgement), and the unsourced ones are kept and labelled rather
+than quietly dropped.
+
+| # | Claim in this README | Basis | Where to check it / why it cannot be checked |
+|---|---|---|---|
+| 1 | 6 test suites + smoke, plus 13 repository checks | **sourced** | `npm run verify` — measured exit 0; `package.json`'s `test` script chains exactly 6 `node test/*.test.mjs` |
+| 2 | Version 0.4.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.4.0` |
+| 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
+| 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
+| 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |
+| 6 | `verify_claims` registers six check kinds | **sourced** | `src/tool.ts` `CHECK_KINDS`; live call returns `workspace: { cwd, source }` |
+| 7 | Claim-level injection fires only on a positive refutation, not on "couldn't verify" | **sourced (by tests)** | `test/loop.test.mjs` covers the budget and the silence conditions |
+| 8 | Evaluated corpus: 152 answers, 19852 events; refutations 645/1345 → 8/1162; precision 0/13 → 5/8 = 62.5%; answers spoken on 152/152 → 7/152 = 4.6% | **UNSOURCED — not reproducible from this repo** | the artifacts live in `eval/out/`, which is **deliberately not committed** (they are extracted from this machine's real sessions and contain answer text, local paths and a LAN address). The generating scripts are committed (`eval/*.mjs`), so you can rebuild an equivalent corpus from *your* sessions, but you cannot re-derive these particular figures. Also: one re-measurement of that corpus gave **19879** events, not 19852, and I could not reconcile the difference — treat the exact counts as approximate. |
+| 9 | The provenance gate fires once per delivered document, not once per write | **sourced (by tests)** | `test/loop.test.mjs` (same path twice → one ask; different case → one ask); a real 3-turn session containing **41 writes** to one file produced exactly **1** ask |
+| 10 | "126-turn document session → 6 asks", "11-turn code session → 0 asks", "manual before the audit → 1, after → 0" | **UNSOURCED — my own replay, script not kept** | driven through the real loop over this machine's session logs; the harness was a scratch script and was deleted, so it cannot be re-run. An independent verifier re-checked only the "same path 3× → 1 ask" property, not these totals. The "before the audit" manual was a **reconstruction** (I deleted appendices A/B/E to recreate the pre-audit state), not a real historical file |
+| 11 | ~98.6% of turns are suppressed by the "already verified" gate | **UNSOURCED — my own count** | measured on this machine's session logs with a scratch script, now deleted |
+| 12 | Refutations on the real 46k-character manual: `{"refuted":1,"unverifiable":20}` → `{"unverifiable":21}` after fixes | **UNSOURCED — my own measurement** | same deleted harness; the one refutation was `npu-smi info`, which was itself wrong (device CLIs belong to the target machine) |
+| 13 | End-to-end error-rate delta (plugin on vs off) | **UNSOURCED — not measured** | stated as not measured in "Proven vs not proven" above; would need four arms at equal inference cost |
+
+If you want items 8, 10, 11 or 12 to become sourced, the honest options are: (a) commit a
+**sanitised** corpus (session IDs and paths stripped) so the numbers can be rebuilt, or (b)
+re-derive them and state the commit they were measured at.
+
+---
+
 ## License
 
 MIT
