@@ -24,7 +24,7 @@ export { scanAnswer, DETECTOR_KINDS } from './scanner.js'
 export { runCheck, runChecks } from './verify.js'
 export { extractClaims, splitCommand } from './claims.js'
 export { gatherEvidence, verdictOf } from './evidence.js'
-export { commandAvailability, packageVersion, symbolExists, versionClaim, which } from './local.js'
+export { commandAvailability, packageVersion, rangeSatisfied, symbolExists, versionClaim, which } from './local.js'
 export { factoredCheck, normalizeAnswer } from './factored.js'
 export { NetProbe } from './network.js'
 

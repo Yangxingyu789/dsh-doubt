@@ -52,7 +52,7 @@ async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Pro
           out.push({ label: `registry ${base}`, value: `${pkgName} 在 registry 里不存在`, ok: claim.kind === 'package' ? false : true })
           continue
         }
-        if (!res.ok) { out.push({ label: `registry ${base}`, value: `HTTP ${res.status}`, ok: false }); continue }
+        if (!res.ok) { out.push({ label: `registry ${base}`, value: `HTTP ${res.status}`, ok: false, weak: true }); continue }
         const doc: any = await res.json()
         const latest: string | undefined = doc?.['dist-tags']?.latest
         const wanted = /(v?\d+\.\d+(?:\.\d+)?)/.exec(claim.text)?.[1]?.replace(/^v/, '')
@@ -64,7 +64,8 @@ async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Pro
           out.push({ label: `registry ${base}`, value: `${pkgName} 最新版本 ${latest ?? '?'}`, ok: Boolean(latest) })
         }
       } catch (e) {
-        out.push({ label: `registry ${base}`, value: `请求失败：${String(e instanceof Error ? e.message : e)}`, ok: false })
+        // 请求失败是**中性**，不是反驳：网络抖动不得造成假证伪
+        out.push({ label: `registry ${base}`, value: `请求失败：${String(e instanceof Error ? e.message : e)}`, ok: false, weak: true })
       }
     }
   }

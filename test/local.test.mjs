@@ -3,7 +3,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { packageForVersionClaim } from '../lib/claims.js'
-import { commandAvailability, packageVersion, symbolExists, versionClaim, which } from '../lib/local.js'
+import { commandAvailability, packageVersion, rangeSatisfied, symbolExists, versionClaim, which } from '../lib/local.js'
 import { runCheck } from '../lib/verify.js'
 
 const cwd = process.cwd()
@@ -50,6 +50,27 @@ assert.equal(cs.ok, true, `大小写不同的包名应能命中：${cs.detail}`)
 // 4d) 本机确实装了某个版本 → 按「任何包是这个版本」确认，不硬猜包名
 const anyVer = versionClaim(`typescript ${installed}`, cwd)
 assert.equal(anyVer.ok, true, `应能通过 node_modules 确认 ${installed}：${anyVer.detail}`)
+
+// 4e) 声明范围语义：`^5` 必须满足 5.9.3（曾把满足的范围算成反驳，导致 inconclusive）
+assert.equal(rangeSatisfied('^5', '5.9.3'), true, '^5 应满足 5.9.3')
+assert.equal(rangeSatisfied('^5.0.0', '5.9.3'), true)
+assert.equal(rangeSatisfied('^5', '9.9.9'), false, '^5 不应满足 9.9.9')
+assert.equal(rangeSatisfied('^0.2.0', '0.2.9'), true, '^0.2.0 允许 patch 升')
+assert.equal(rangeSatisfied('^0.2.0', '0.3.0'), false, '^0.x 不得跨 minor')
+assert.equal(rangeSatisfied('~5.9.0', '5.9.3'), true)
+assert.equal(rangeSatisfied('~5.9.0', '5.10.0'), false, '~5.9.0 不得跨 minor')
+assert.equal(rangeSatisfied('>=4', '5.9.3'), true)
+assert.equal(rangeSatisfied('<4', '5.9.3'), false)
+assert.equal(rangeSatisfied('5.x', '5.9.3'), true)
+assert.equal(rangeSatisfied('4.x', '5.9.3'), false)
+assert.equal(rangeSatisfied('*', '5.9.3'), true)
+assert.equal(rangeSatisfied('^1.2.3 || ^5.0.0', '5.9.3'), true, '|| 任一满足即可')
+assert.equal(rangeSatisfied('workspace:*', '5.9.3'), undefined, '无法判断的范围必须返回 undefined，不得算反驳')
+
+// 4f) 真实版本断言不得因范围判断错误而降级成 inconclusive
+const realClaim = versionClaim('typescript 5.9.3', cwd, 'typescript')
+assert.equal(realClaim.ok, true, `真实版本应被支持：${realClaim.detail}`)
+assert.equal(realClaim.sources.some((s) => !s.ok && !s.weak), false, `不应有反驳来源：${realClaim.detail}`)
 
 // 5) 符号存在性：本仓库真实导出的函数名应找到
 const sym = symbolExists('normalizeConfig(x)', cwd)

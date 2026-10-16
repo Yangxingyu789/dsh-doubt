@@ -105,7 +105,7 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `onlineTimeoutMs` | `8000` | Online request timeout |
 | `factored` | `true` | Enable Tier C |
 | `factoredVotes` | `3` | Independent re-derivation samples |
-| `factoredProvider` | `spawn-in-process` | Subagent provider; auto-degrades if absent |
+| `factoredProvider` | `spawn` | Subagent provider name (verified: `dsh-subagent-spawn-in-process` registers under its own `config.providerName`, default `spawn`; that provider's children have zero parent context). Auto-degrades with an honest report when unavailable |
 | `executeAnswerCommands` | `false` | **Do not execute commands from the answer by default** — only check that the program exists |
 | `strictLabeling` | `true` | Unverifiable assertions must be labelled in the final answer |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
@@ -160,11 +160,13 @@ Measured reply, with provenance:
 ```json
 {
   "results": [
-    { "ok": false, "kind": "versionClaim",
-      "detail": "✗ [node_modules/typescript] actual 5.9.3, claimed 9.9.9\n✓ [pnpm-lock.yaml] no record of 9.9.9" }
+    { "ok": false, "kind": "versionClaim", "claim": "typescript 9.9.9",
+      "detail": "✗ [node_modules/typescript] actual 5.9.3, claimed 9.9.9\n✗ [E:\\dsh-doubt\\package.json] declared range ^5, claimed 9.9.9" }
   ]
 }
 ```
+
+(That block is real output from this machine, not an illustration.)
 
 ---
 
@@ -185,7 +187,7 @@ Measured reply, with provenance:
 - **Timeout**: 15 s default, then `SIGKILL`, reported honestly.
 - **Output cap**: 4000 characters.
 - **`expr` runs in an empty `vm` context**: no `require`, `process` or `globalThis`.
-- **Online traffic is public registry lookups only**; probes and registry queries carry no user content.
+- **Network behaviour**: only GETs to the public registries listed in `registryUrls`. **Note**: the URL path contains the **package name extracted from the answer** (`/registry/<pkg>`), so package names do leave the machine; nothing else is transmitted. Connectivity probes hit `probeUrls` with no parameters. Offline mode never touches the network.
 
 It does **not** go through DSH's sandbox/approval chain — a known plugin-layer limitation. Tighten `denyBinaries`, or set `verifyTool: false`.
 

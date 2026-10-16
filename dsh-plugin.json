@@ -32,7 +32,7 @@
     {
       "name": "dsh-doubt.net.fetch",
       "scope": "network",
-      "reason": "联网时向多个独立 registry 来源交叉核对包与版本；离线探测本身不传输任何用户内容。"
+      "reason": "联网时向 registryUrls 配置的公开 registry 交叉核对包与版本；URL 路径会带上从回答中抽出的包名，其余内容不传输。离线时不出网。"
     }
   ],
   "contributes": {

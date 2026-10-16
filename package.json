@@ -42,7 +42,8 @@
     "check": "tsc -p tsconfig.json --noEmit",
     "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs",
     "smoke": "node test/smoke.mjs",
-    "verify": "npm run check && npm run build && npm test && npm run smoke",
+    "audit": "node scripts/audit.mjs",
+    "verify": "npm run check && npm run build && npm test && npm run smoke && npm run audit",
     "install:local": "node scripts/install-local.mjs"
   },
   "keywords": [

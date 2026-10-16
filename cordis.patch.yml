@@ -15,7 +15,7 @@
     # Tier C：离线且无判据时，无草稿上下文独立重推导 + 多数投票
     factored: true
     factoredVotes: 3
-    factoredProvider: spawn-in-process
+    factoredProvider: spawn
 
     # 安全：默认不执行回答里出现的命令，只验证程序是否存在
     executeAnswerCommands: false

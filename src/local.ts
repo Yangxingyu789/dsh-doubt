@@ -135,7 +135,7 @@ export function packageVersion(claim: string, name: string, cwd: string): Oracle
     let range: string | undefined
     for (const f of fields) range ??= pkg[f]?.[bare]
     sources.push({
-      label: `${declared}/package.json`,
+      label: join(declared, 'package.json'),
       value: range ? `声明范围 ${range}` : '未在依赖里声明',
       ok: Boolean(range),
     })
@@ -182,6 +182,98 @@ function findInstalledByVersion(root: string, version: string): string | null {
   return null
 }
 
+/** 版本比较：按 [major, minor, patch] 数值比 */
+function parseVer(v: string): number[] | null {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(v.trim())
+  if (!m) return null
+  return [Number(m[1]), Number(m[2]), Number(m[3])]
+}
+
+function cmp(a: number[], b: number[]): number {
+  for (let i = 0; i < 3; i += 1) {
+    if (a[i] !== b[i]) return a[i] < b[i] ? -1 : 1
+  }
+  return 0
+}
+
+/**
+ * 声明范围是否被该版本满足。返回 undefined 表示无法判断（不得当成反驳）。
+ * 覆盖 `*` / `x` / 精确 / `^` / `~` / `>= > < <=` / `||`；其余协议一律中性。
+ */
+export function rangeSatisfied(range: string, version: string): boolean | undefined {
+  const v = parseVer(version)
+  if (!v) return undefined
+  const r = range.trim()
+  if (!r) return undefined
+  if (r === '*' || r === 'latest') return true
+  if (/^(workspace:|file:|link:|npm:)/.test(r)) return undefined
+
+  for (const part of r.split('||')) {
+    const sat = satisfiesPart(part.trim(), v)
+    if (sat === true) return true
+    if (sat === undefined) return undefined
+  }
+  return false
+}
+
+/** 宽松解析：允许 `4` / `4.1` / `4.x` 这类缺位写法，缺的补 0 */
+function parseLoose(v: string): number[] | null {
+  const m = /^(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?(?:[-+][\w.]+)?$/.exec(v.trim())
+  if (!m) return null
+  return [Number(m[1]), m[2] && /^\d+$/.test(m[2]) ? Number(m[2]) : 0, m[3] && /^\d+$/.test(m[3]) ? Number(m[3]) : 0]
+}
+
+function satisfiesPart(part: string, v: number[]): boolean | undefined {
+  if (!part || part === '*' || part === 'x') return true
+  const op = /^(>=|<=|>|<|=)\s*/.exec(part)
+  if (op) {
+    const target = parseLoose(part.slice(op[0].length))
+    if (!target) return undefined
+    const c = cmp(v, target)
+    switch (op[1]) {
+      case '>=': return c >= 0
+      case '<=': return c <= 0
+      case '>': return c > 0
+      case '<': return c < 0
+      default: return c === 0
+    }
+  }
+  const caret = /^\^\s*(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/.exec(part)
+  if (caret) {
+    const major = Number(caret[1])
+    const minorRaw = caret[2]
+    const target = parseLoose(`${major}.${minorRaw && /^\d+$/.test(minorRaw) ? minorRaw : 0}.${caret[3] && /^\d+$/.test(caret[3]) ? caret[3] : 0}`)
+    if (!target) return undefined
+    if (cmp(v, target) < 0) return false
+    // caret 不改动最左边的非零位
+    if (major > 0) return v[0] === major
+    if (target[1] > 0) return v[0] === 0 && v[1] === target[1]
+    return v[0] === 0 && v[1] === target[1] && v[2] === target[2]
+  }
+  const tilde = /^~\s*(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?/.exec(part)
+  if (tilde) {
+    const major = Number(tilde[1])
+    const minorRaw = tilde[2]
+    if (minorRaw === undefined || minorRaw === 'x' || minorRaw === '*') return v[0] === major
+    const minor = Number(minorRaw)
+    const patchRaw = tilde[3]
+    if (patchRaw === undefined || patchRaw === 'x' || patchRaw === '*') return v[0] === major && v[1] === minor
+    const target = parseVer(`${major}.${minor}.${Number(patchRaw)}`)
+    if (!target) return undefined
+    return v[0] === major && v[1] === minor && cmp(v, target) >= 0
+  }
+  // `5.x` / `5.9.x` / 精确
+  const xr = /^(\d+)(?:\.(\d+|x|\*))?(?:\.(\d+|x|\*))?$/.exec(part)
+  if (xr) {
+    if (Number(xr[1]) !== v[0]) return false
+    if (xr[2] === undefined || xr[2] === 'x' || xr[2] === '*') return true
+    if (Number(xr[2]) !== v[1]) return false
+    if (xr[3] === undefined || xr[3] === 'x' || xr[3] === '*') return true
+    return Number(xr[3]) === v[2]
+  }
+  return undefined
+}
+
 /** 版本断言：把断言里的版本号和可比来源比对；**定位不到包名时不猜测、不反驳** */
 export function versionClaim(claim: string, cwd: string, name?: string): OracleResult {
   const m = /(v?\d+\.\d+(?:\.\d+)?)/.exec(claim)
@@ -208,8 +300,15 @@ export function versionClaim(claim: string, cwd: string, name?: string): OracleR
       let range: string | undefined
       for (const f of ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const) range ??= pkg[f]?.[pkgName]
       if (range) {
-        const satisfied = range.replace(/^[\^~]/, '') === claimed || range === '*'
-        sources.push({ label: `${declared}/package.json`, value: `声明范围 ${range}，断言 ${claimed}`, ok: satisfied })
+        const sat = rangeSatisfied(range, claimed)
+        sources.push({
+          label: join(declared, 'package.json'),
+          value: sat === undefined
+            ? `声明范围 ${range}（无法判断是否覆盖 ${claimed}）`
+            : `声明范围 ${range}，断言 ${claimed}${sat ? '（满足）' : '（不满足）'}`,
+          ok: sat === true,
+          weak: sat === undefined,
+        })
       }
     }
     if (sources.length === 0) return noEvidence('versionClaim', claim, `本机找不到包 ${pkgName}，无法判断版本 ${claimed}`)

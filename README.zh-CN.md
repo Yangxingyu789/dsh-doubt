@@ -106,7 +106,7 @@ pnpm install --offline
 | `onlineTimeoutMs` | `8000` | 在线请求超时 |
 | `factored` | `true` | 启用 Tier C |
 | `factoredVotes` | `3` | 独立重推导采样数 |
-| `factoredProvider` | `spawn-in-process` | 子代理 provider；不可用则自动跳过并如实报告 |
+| `factoredProvider` | `spawn` | 子代理 provider 名（实测核对：`dsh-subagent-spawn-in-process` 注册名 = 其 `config.providerName`，默认 `spawn`；该 provider 的子代理是 zero parent context）。不可用则自动跳过并如实报告 |
 | `executeAnswerCommands` | `false` | **默认不执行回答里出现的命令**，只验证程序是否存在 |
 | `strictLabeling` | `true` | 无法核验的断言必须在最终回答里标「未验证」 |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
@@ -161,11 +161,13 @@ pnpm install --offline
 ```json
 {
   "results": [
-    { "ok": false, "kind": "versionClaim",
-      "detail": "✗ [node_modules/typescript] 实际 5.9.3，断言 9.9.9\n✓ [pnpm-lock.yaml] 锁文件里没有 9.9.9 的记录" }
+    { "ok": false, "kind": "versionClaim", "claim": "typescript 9.9.9",
+      "detail": "✗ [node_modules/typescript] 实际 5.9.3，断言 9.9.9\n✗ [E:\\dsh-doubt\\package.json] 声明范围 ^5，断言 9.9.9" }
   ]
 }
 ```
+
+（上面这段是这台机器上的真实输出，不是示意。）
 
 ---
 
@@ -186,7 +188,7 @@ pnpm install --offline
 - **超时**：默认 15 秒，超时 `SIGKILL` 并如实报告。
 - **输出上限**：4000 字符截断。
 - **`expr` 空沙箱**：`vm.runInNewContext` + 空 context，无 `require` / `process` / `globalThis`。
-- **联网只查公开 registry**：探测与 registry 查询不传输任何用户内容。
+- **联网行为**：只向 `registryUrls` 配置的公开 registry 发 GET。**注意**：URL 路径里会带上从回答中抽出的**包名**（`/registry/<pkg>`），所以包名会离开本机；除此之外不传输任何内容。联网探测只访问 `probeUrls`，不带参数。离线时完全不出网。
 
 它**不**走 DSH 的沙箱与审批链——插件层的已知限制。要更严就收紧 `denyBinaries`，或 `verifyTool: false`。
 

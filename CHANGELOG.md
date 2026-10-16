@@ -36,6 +36,22 @@
 
 6 套：`scanner` / `verify` / `local` / `evidence` / `factored` / `loop` + `smoke`。新增覆盖：oracle 实测（typescript=5.9.3、2 个独立来源）、判定规则（来源数/冲突/弱证据中性）、断言翻译的安全约束、Tier C 投票与分裂、注入的是证据而非请求。
 
+### 修复（v0.2.0 复核轮：逐项核对文档与代码时查出）
+
+- **provider 名是猜的**：`factoredProvider` 默认曾写 `spawn-in-process`。查宿主源码后确认：`dsh-subagent-spawn-in-process` 用 `config.providerName` 注册，**默认值是 `spawn`**。已改默认值，并在源码注释里记下出处（该 provider 的子代理是 fresh child Agent、zero parent context，正是 Tier C 需要的无草稿上下文）。
+- **semver 范围语义错误**：`^5` 曾被判为不满足 `5.9.3`，把满足的声明范围算成反驳，导致真断言降级成 `inconclusive`。现在自己实现 `rangeSatisfied`（`*` / `x` / 精确 / `^` / `~` / `>= > < <=` / `||`），无法判断的范围返回 `undefined` 走中性，绝不反驳。
+- **`*` 被误归入「无法判断」**：自己实现的判定里 `*` 返回了 `undefined`。
+- **比较目标缺位解析失败**：`>=4` 这类只写主版本的目标解析不出，返回 `undefined`。现在按 `4.0.0` 补位。
+- **网络失败曾被算成反驳**：registry 请求失败 / 非 2xx 曾计入 contradicting，意味着**网络抖动就能造成假证伪**。现在标为中性弱证据。
+- **文档过度声称**：曾写「联网不传输任何用户内容」。事实是 registry 查询的 URL 路径带上从回答抽出的**包名**。中英 README 与 manifest 的权限说明都已改成如实描述。
+- `packageVersion` / `versionClaim` 的来源标签分隔符混用（`E:\x/package.json`）。
+- `test/smoke.mjs` 残留旧字段 `autoRecheck`。
+
+### 新增（核对用的工具）
+
+- `scripts/audit.mjs`：把「文档里声称的」和「文件里实际有的」逐项对齐——JSON 合法性、版本一致性、`exports`/`files` 指向的文件是否存在、`cordis.patch.yml` 的键是否都在 `DoubtConfig` 里、`DEFAULT_CONFIG` 是否覆盖全部键、旧字段残留、README 引用的源文件是否存在、README 声称的测试套数是否属实、manifest 声明的工具名与 entry 是否存在。已挂进 `npm run verify`（11 项）。
+- 联网 Tier B 实测：两个 registry（npmmirror + npmjs）同时可达时，`typescript 5.9.3` → 4 个来源一致 `confirmed`；`typescript 9.9.9` → 4 个来源反驳 `refuted`。
+
 ## 0.1.0
 
 首次发布。

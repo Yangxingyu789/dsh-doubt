@@ -75,7 +75,9 @@ export const DEFAULT_CONFIG: DoubtConfig = {
 
   factored: true,
   factoredVotes: 3,
-  factoredProvider: 'spawn-in-process',
+  // 实测核对：dsh-subagent-spawn-in-process 注册名 = config.providerName，默认 "spawn"
+  // 该 provider 的子代理是 fresh child Agent、zero parent context —— 正是 Tier C 需要的无草稿上下文
+  factoredProvider: 'spawn',
 
   executeAnswerCommands: false,
   strictLabeling: true,
