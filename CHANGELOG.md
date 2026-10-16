@@ -62,6 +62,30 @@
   现已有**真的会失败**的测试；`mentionsOtherMachine` 原先那条测试还因为措辞不含存在性断言而在更早的闸
   就被丢掉——测试绿得毫无意义，一并修正。
 
+### 逐步骤溯源表
+
+本节由**溯源闸**要求补齐（插件在活体上发现本文件是交付文档而正文没有出处标注后自动提出）。
+每一条按「有出处 / 无依据」两类标注；凡能机械核对的（符号、文件、版本号、宿主源码行）都在写入前实测过。
+
+| # | 条目 | 依据 | 出处 / 核对方式 |
+|---|---|---|---|
+| 1 | `cordis.patch.yml` 此前缺顶层 `insert:`，宿主只在**已有**条目上按 id 覆盖 | 有出处 | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches`；实测无 `insert:` 时 `dsh --profileX --dump-config` 退出码 0、stdout **2 字节**、stderr `dsh: [dsh-doubt] patch: entry "dsh-doubt" not found`；加 `insert:` 后 stdout **461 字节**并含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
+| 2 | `ctx.inject(['tools'], () => ctx.tools)` 抓的是外层 ctx，访问服务抛错 | 有出处 | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`（两处均已实测命中）；`verify:independent` 第 3 项在真实 cordis 上实测 `tools=[verify_claims]` |
+| 3 | 本机 oracle 曾查 profile 目录：`DEFAULT_CONFIG.workspace = process.cwd()` 在插件加载时求值 | 有出处 | 源码 `src/config.ts`；运行时权威来源实测两处独立一致：`dsh-tool-fs/lib/index.js:173` = `function sessionCwd(exec) {`（返回 `exec.agent?.session.header.cwd`）、`dsh-tool-bash/lib/index.js:294` = `const headerCwd = exec.agent?.session.header.cwd;` |
+| 4 | `verify_claims` 的返回字段必须逐个写进 `OUTPUT_SCHEMA` | 有出处 | `src/tool.ts` 中 `additionalProperties: false`（实测存在）；宿主活体错误原文 `tool "verify_claims" returned invalid output: "value.workspace" is not a declared property`；契约测试在 `test/local.test.mjs` |
+| 5 | `expr` 曾能打死/挂死宿主；现改为子进程求值且取值全在 vm 内 | 有出处 | 恶意载荷由**独立验证者**给出并复现：`({get then(){for(;;){}}})` 与 `({toJSON(){for(;;){}}})` 挂死宿主、表达式内**丢弃**的 rejection 在返回 `ok:true` 之后打死进程。修复后同一批载荷写进 `test/verify.test.mjs` 并在测试进程内跑通；活体上 `({get then(){for(;;){}}})` 已改为如实报 `Script execution timed out` |
+| 6 | `selfPackageRoot()` 曾按**路径**比较 → 自指证据 | 有出处 | 源码 `src/local.ts:13`（实测存在）；活体复现：修复前 `symbolExists('normalizeConfig()', 'C:/work/dsh-doubt')` 引用插件自己的 `src/config.ts`，修复后返回「找不到」（活体实测） |
+| 7 | 测试临时文件原先硬编码在 `test/` 下，并发会互删；改用 `os.tmpdir()` + pid | 有出处 | 独立验证者以 4 个并发进程 6/6 复现 `ENOENT … unlink`；改用 `os.tmpdir()` 后我实测 4 并发 **4/4 exit 0、无 ENOENT** |
+| 8 | `rangeSatisfied` 对预发布版本与 node-semver 不一致 | 有出处（**引用验证者数字，未自行复现该数字**） | 独立验证者报告 21/48 布尔格不一致、方向偏宽松。我自行复现的是**发布版本**矩阵：**493 组 0 不一致**（`verify:independent` 第 2 项） |
+| 9 | 溯源闸「每份文档只问一次」 | 有出处 | 回放本机真实会话 `verify:independent` 第 4 项（documents=3 asks=1）；本节本身就是活体触发的结果 |
+| 10 | 「126 轮文档密集会话 6 次、11 轮编码会话 0 次」 | **无依据（本人实测，未经独立复核）** | 我自己驱动的会话回放，脚本已删除、不可重跑。独立验证者只复核了「同一路径连写 3 次只问 1 次」，**没有**复核这两个总数 |
+| 11 | 「手册在溯源附录存在前 1 次 / 存在后 0 次」 | **无依据（构造样本）** | 「存在前」那一版是我从现行手册里**删掉**附录 A/B/E 与来源说明后**构造**的（46436 → 39722 字符），**不是真实历史文件**。真实那份手册只验了「存在后 0 次」 |
+| 12 | 扫描器报的 `(version) for 0.3.0` / `whether 0.3.0` / `The 0.3.0` | **无依据（不是断言）** | 这三条是从英文行文里截出的版本号片段，原文只是描述版本从 0.3.0 升到 0.4.0，并非断言某软件的版本。标为「无依据」是因为它们在本表里对应不到任何外部出处；按溯源闸要求**保留、不删** |
+| 13 | 扫描器报的 `(package) manifest` | **无依据（不是断言）** | 扫描器把 `manifest` 当成了 npm 包名；它在此文中的实际所指是 `dsh-plugin.json`（实测存在，version `0.4.0` 与 `package.json` 一致）。同样**保留、不删** |
+| 14 | 版本 0.3.0 → 0.4.0，`package.json` 与 `dsh-plugin.json` 同步 | 有出处 | 实测两处均为 `0.4.0`；`npm run audit` 输出 `OK 版本一致：0.4.0` |
+
+**未能核对的**：第 10、11 条依赖的原始回放脚本已删除，无法重跑；第 12、13 条属于扫描器的抽取噪声，不是可核验的技术断言。以上均按溯源闸要求显式标注、保留原样。
+
 ## 0.3.0（评测驱动的重写）
 
 ### 新增：真实语料评测
