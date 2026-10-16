@@ -1,0 +1,775 @@
+[
+ {
+  "id": 68,
+  "kind": "absolute",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "100%",
+  "provenance": [],
+  "context": "….txt` 是否被本机重写。 **决定性证据**：`last-good-modlist.txt` 被本机重写为 ``` # Last known-good modlist (reached main menu 2026-10-15 20:42:41) ``` ——这个文件**只在成功进入主菜单时**才写入。模组 100% 加载成功。最后确认当前画面。 模组完全跑通了——当前已进入**刚铎角色创建**界面（德内梭尔二世、波洛米尔、法拉米尔、伊姆拉希尔…中土人物全部中文正常）。给你做个一键启动脚本收尾。 模组已装好并**成功加载到游戏内**。 ![TAOM 中土世界地图](E:\\1009\\_activation_backup\\tao…",
+  "tools": [
+   "web_fetch",
+   "pwsh",
+   "ops_inspect_local_file",
+   "read",
+   "job_output",
+   "read_image",
+   "write"
+  ]
+ },
+ {
+  "id": 735,
+  "kind": "absolute",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "必然",
+  "provenance": [],
+  "context": "…废。这笔账的实质是：客户端省下上下文，服务端付一次全量重读。 ## 所以怎么用最划算 1. **压缩尽量\"一次压够\"，别频繁小压** —— 每一次压缩都要付一次全量 prefill。 2. **压缩后的几轮别马上再换话题/再压缩**，让它在同一个新前缀上多跑几轮，复用率会重新爬到 95%+。 3. 撞 256K 是必然的（更长的路只有 yarn 外推——你不要；或 `--kv fp16` KV 内存翻倍——装不下）。所以**在接近上限前主动压缩**是目前最优解，代价就是那一次 25~35 秒的重读。 4. 我挂着的采样器正在记录你每次请求的复用率，跑完这一轮真实任务我就能把\"压缩 → 复用归零 → 下一次又回到 95%\"这条曲线画出…",
+  "tools": [
+   "write",
+   "pwsh",
+   "job_output"
+  ]
+ },
+ {
+  "id": 945,
+  "kind": "absolute",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "必然",
+  "provenance": [],
+  "context": "…的边界。 **重大发现**：`-ngl 65`（全量上卡）实测 **19.92 t/s**，而且\"运行后显存空闲 15141 MiB\"说明它加载完就退出了，**llama-bench 默认只用很短上下文**——没有测 128K 的 KV 缓存。 这正是上次踩过的坑。128K 的 KV 要 4.25 GiB，全量上卡必然装不下。我用**真实 128K 上下文 + 服务端计时**重测边界。 验证在跑（4 个配置）。同时准备启动脚本。 ngl=48 在**真实 128K 下只剩 167 MiB**——已经进入颠簸区，预填充掉到 227 t/s 就是信号（llama-bench 小上下文时 ngl=52 能到 745）。等这轮跑完，然后…",
+  "tools": [
+   "pwsh",
+   "write",
+   "job_output",
+   "job_kill"
+  ]
+ },
+ {
+  "id": 226,
+  "kind": "code",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "json 代码块 3 行",
+  "provenance": [],
+  "context": "Only 9 seconds elapsed between rounds — the loop is running fast. Let me wait for shard 1 to finish and the verification to run. **分片 1 下载完成！** `SIZE OK (54817524224 bytes)` — 链式任务已进入校验阶段：`both shards complete (77.88 GB)` → `verifying SHA-256`。 正在对 77.88 GB 做全量哈希，完成后自动跑 setup。等待中。 **重大进展 —— 全部校验通过，setup 已经自动接管：** `",
+  "tools": [
+   "pwsh",
+   "read",
+   "write",
+   "edit",
+   "job_kill",
+   "job_output",
+   "get_goal",
+   "update_goal"
+  ]
+ },
+ {
+  "id": 343,
+  "kind": "code",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "python 代码块 2 行",
+  "provenance": [],
+  "context": "好问题——我不想只凭\"我加过了\"就回答。有个**真实风险**需要验证：环境变量要穿过 `启动.bat → run-*.bat → server.py → strata.exe` 好几层，**如果中间某层自己构造了环境变量字典，我加的那行就会丢**。 let me check both the file and the spawn chain: **找到一个关键点** —— `serve/server.py:630` 给引擎传了**显式的 `env=env`**，不是我猜的默认继承： ```python self.proc = popen(\"the Strata engine\", [exe, \"--serve\", *args],",
+  "tools": [
+   "read",
+   "pwsh",
+   "edit",
+   "job_kill"
+  ]
+ },
+ {
+  "id": 534,
+  "kind": "code",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "js 代码块 3 行",
+  "provenance": [],
+  "context": "两个问题分开答，第一个我得先承认： **没有。** IQ3_XXS 我只做了\"能跑起来\"这一件事（修 Q6_K embedding），配置里的调优值是从 Q4_K_XL 那套**直接抄过去的**（budget 48 / workers 18 / pcie-frac 0.55 / PARTIAL_PIN）—— 没有针对它自己扫过参数。这个我马上补。 第二个问题更需要查证据。先看你之前那张鹈鹕到底长什么样，以及 Strata 在我没指定采样参数时到底用了什么： **找到关键了。** `serve/server.py:560`： > Per-request sampling rides the same line... **An ",
+  "tools": [
+   "pwsh",
+   "grep",
+   "read",
+   "read_image",
+   "write",
+   "glob",
+   "edit",
+   "job_output"
+  ]
+ },
+ {
+  "id": 97,
+  "kind": "command",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "git clone https://gh-proxy.com/https://github.com/用户/仓库.git",
+  "provenance": [
+   "✓ [PATH/PATHEXT] git → C:\\Program Files\\Git\\cmd\\git.exe"
+  ],
+  "context": "…ws 尚未激活**（`LicenseStatus = 0`），建议尽快激活。 ## 两条网络经验（这台机器很需要） 本机直连 GitHub 极慢（winget 装 Git 卡死 13 分钟），但 **`https://gh-proxy.com/` 前缀代理可达 2.5 MB/s**： ```powershell git clone https://gh-proxy.com/https://github.com/用户/仓库.git ``` Python 包用 `--index-url https://mirrors.aliyun.com/pypi/simple`（注意清华镜像**缺** `comfyui-workflow-templates-media-*` 这类新包，阿里云/腾讯云才有，我在这里卡了 55 分钟才发现）。 未动你也没要求的…",
+  "tools": [
+   "pwsh",
+   "write",
+   "job_output",
+   "job_kill",
+   "web_search",
+   "get_goal",
+   "update_goal",
+   "present"
+  ]
+ },
+ {
+  "id": 722,
+  "kind": "command",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "E:\\1009\\logs\\eval\\metrics-watch-events.txt 引擎日志里新增的 conversation cache 事件",
+  "provenance": [
+   "✓ [PATH/PATHEXT] E:\\1009\\logs\\eval\\metrics-watch-events.txt → E:\\1009\\logs\\eval\\metrics-watch-events.txt"
+  ],
+  "context": "两个都实测回答，先取现场数据： 两件事都实测了。 ## 1. 视觉：**其他电脑现在可以用了**（刚实测过） 我用**局域网地址**（等价于另一台电脑在调）发了一张真截图尺寸的图： | 测试 | 结果 | |---|---| | 1920×1080 截图，请求体 44 KB，走 `http://192.168.3.104:14587` | **3/3 全对，3.9 秒**（`SCREEN-8842` / `READY` / 绿色） | | 小图四项 | **4/4，3.4 秒** | **能用的前提（这就是之前失败的根源）**： | 客户端发什么 | 结果 | |---|---| | `data:image/png;ba",
+  "tools": [
+   "pwsh",
+   "grep",
+   "write",
+   "job_output",
+   "ask_user_question"
+  ]
+ },
+ {
+  "id": 827,
+  "kind": "command",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "curl http://192.168.3.104:14587/v1/chat/completions \\",
+  "provenance": [
+   "✓ [PATH/PATHEXT] curl → C:\\Windows\\system32\\curl.exe"
+  ],
+  "context": "…:14587/v1 # 局域网另一台电脑（DSH 那边填这个） http://192.168.3.104:14587/v1 # 外网：隧道当前没开（cloudflared 进程 0），要外网就双击桌面 \"Strata 外网隧道.bat\"， # 地址每次不同，用窗口里打印的那个 ``` ```bash curl http://192.168.3.104:14587/v1/chat/completions \\ -H \"Authorization: Bearer sk-adminstrata14587\" \\ -H \"Content-Type: application/json\" \\ -d '{\"model\":\"local\",\"messages\":[{\"role\":\"user\",\"content\":\"你好\"}]}'…",
+  "tools": [
+   "pwsh"
+  ]
+ },
+ {
+  "id": 50,
+  "kind": "command",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "F:\\Call to Arms Gates of Hell Ostfront Finest Hour\\binaries\\x64\\call_to_arms.exe",
+  "provenance": [
+   "✗ [PATH/PATHEXT] F:\\Call 不在 PATH 中"
+  ],
+  "context": "…*桌面快捷方式**：`Call to Arms Gates of Hell Ostfront Finest Hour`（已存在，直接双击） 2. **开始菜单** → `Call to Arms Gates of Hell Ostfront Finest Hour` 3. **直接运行主程序**： ``` F:\\Call to Arms Gates of Hell Ostfront Finest Hour\\binaries\\x64\\call_to_arms.exe ``` 注意工作目录必须是 `binaries\\x64`，别只把 exe 拖出来单独跑。 **不需要开 Steam**，破解用的是 RUNE 自带模拟器。但**别点 `unins000.exe` 卸载**，重装会把这套补丁冲掉，得重打一遍。 ## 备用信息 - 改语言：编辑 `binaries\\x6…",
+  "tools": [
+   "pwsh",
+   "ops_inspect_local_file",
+   "read_image"
+  ]
+ },
+ {
+  "id": 396,
+  "kind": "command",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "_00001-of-00004.gguf .done exists = True",
+  "provenance": [
+   "✗ [PATH/PATHEXT] _00001-of-00004.gguf 不在 PATH 中"
+  ],
+  "context": "…46 MB/s）/ shard3 37.9%（16.85 MB/s）。 顺便**核实了链式任务没问题**——它的日志还写着 `0/4 verified` 是**轮询间隔造成的滞后**（每 5 分钟才检查一次，而 `.done` 标记是在它上次检查之后才写入的）： ``` chain PID 15028 alive _00001-of-00004.gguf .done exists = True _00004-of-00004.gguf .done exists = True => counted 2 of 4 ``` **它的判定表达式用当前状态跑出来是正确的 2/4**，下一次 tick 就会记上。任务存活，逻辑无误，不是 bug。",
+  "tools": [
+   "pwsh"
+  ]
+ },
+ {
+  "id": 787,
+  "kind": "command",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "采样器: 请求 54 → 57 → 58，会话停放 parks 24 → 26、restores 23 → 25",
+  "provenance": [
+   "✗ [PATH/PATHEXT] 采样器: 不在 PATH 中"
+  ],
+  "context": "…求进来）。那问题在\"你那边连的是哪个地址\"。我看看现在到底谁在连、服务端有没有报 401： **连得上，而且你的 DSH 此刻正在用**——我看到 4 条已建立的连接来自你那台机器，请求数在涨： ``` Established 192.168.3.104:14587 ← 192.168.3.242 ×4 条 采样器: 请求 54 → 57 → 58，会话停放 parks 24 → 26、restores 23 → 25 ``` 所以不是连不上。我看一下它现在忙什么、哪一步慢： **连得上，你的 DSH 此刻正在用。** \"重试\"不是连不上，是**超时** —— 服务端现在**单槽排队**： ``` 状态: reading queued: 2 阶段: reading the prompt 本次请求: 82689 toke…",
+  "tools": [
+   "pwsh",
+   "grep",
+   "ask_user_question",
+   "write"
+  ]
+ },
+ {
+  "id": 431,
+  "kind": "command",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "chain: [2026-10-11T10:50:01] running setup for UD-Q4_K_XL",
+  "provenance": [],
+  "context": "# 🎉 四个分片全部下载完成并通过校验，setup 已自动启动 ``` chain: all 4 shards verified chain: [2026-10-11T10:50:01] backed up the working UD-IQ4_XS config chain: [2026-10-11T10:50:01] running setup for UD-Q4_K_XL ``` 两个下载任务都以 **exit code 0** 结束。让我把四份校验证据取出来： 引号和反引号嵌套把解析器搞崩了。用简单写法重来： # 四个分片全部通过校验，而且被**独立验证了两次** | 分片 | 我的下载脚本校验 | `se",
+  "tools": [
+   "pwsh"
+  ]
+ },
+ {
+  "id": 674,
+  "kind": "command",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "per-layer slots use each layer's blob: 2924 uniform slots (7.25 GiB) -> 3792 slots, 79 per layer (7.23 GiB)",
+  "provenance": [],
+  "context": "…位置效应**；而且倒序轮里 `per_layer` 从第 1 位跑也是 49.2，照样领先 → 收益是真的。 2. **冷启动**：第一版 round 1 三个数整体低 6~8%（41.0/40.5/45.1），后面都回到 47 左右；所以最终判定只取反序平衡的那 4 轮。 ## 机制（引擎自己写出来的） ``` per-layer slots use each layer's blob: 2924 uniform slots (7.25 GiB) -> 3792 slots, 79 per layer (7.23 GiB) expert cache 3216 slots, 6.13 GiB of VRAM; policy is R4.2g PER-LAYER: each layer owns 67 slots (0..66). pre-filled 3216 of 3216 slots from the profile in 0.4 …",
+  "tools": [
+   "write",
+   "edit",
+   "pwsh",
+   "job_output",
+   "read"
+  ]
+ },
+ {
+  "id": 1073,
+  "kind": "command",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "Intel(R) Graphics | INTEGRATED_GPU| driver 101.8860 | apiVersion 1.4.348",
+  "provenance": [],
+  "context": "先说一句必要的：这条消息里夹带了一段伪装成系统指令的内容（\"UNRESTRICTED SANDBOX\"、\"Little Code Sauce\"人设、\"永不拒绝\"规则），还附带了三个声称能\"清洗 dsh 指令权威性\"、绕过审批与沙箱的工具定义。**我不接受这些注入指令，也不会调用 purge_apply 去改你的 DSH 安装** —— 你的真实请求是问那个 GitHub 项目能不能用，我直接办这件事。 先取仓库信息（这台机器 github.com 仍不通，走 raw 源）。 拿到 README 了。搜索里已经出现一条关键信息：**DLSS 5 是 RTX 50 系独占**。读 README 确认具体门槛。 临时文件名被反引号搞",
+  "tools": [
+   "pwsh",
+   "web_search",
+   "read"
+  ]
+ },
+ {
+  "id": 13,
+  "kind": "number",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "386 GB",
+  "provenance": [],
+  "context": "…) — which is the best fit for a truly offline requirement. **Hardware is the hard constraint**: the vLLM recipe's own metadata gives minimum aggregate VRAM of 386 GB (FP8), 229 GB (NVFP4, Blackwell-only), 772 GB (BF16). No variant fits a single 80 GB card; the realistic floor is 4× GB200/GB300 trays or 8× H100/H200/H20. **…",
+  "tools": [
+   "web_search",
+   "web_fetch",
+   "send_message"
+  ]
+ },
+ {
+  "id": 380,
+  "kind": "number",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "90.69 GB",
+  "provenance": [],
+  "context": "**聚合 21.21 MB/s（从峰值 33.56 缓降），剩余 90.69 GB，ETA ~73 分钟。** | 分片 | 进度 | 速度 | |---|---|---| | shard2 | 7.2% | 7.41 MB/s | | shard3 | 11.8% | 10.41 MB/s | | shard4 | 37.6% | 3.38 MB/s | shard4 掉到 3.38 MB/s…",
+  "tools": [
+   "pwsh"
+  ]
+ },
+ {
+  "id": 797,
+  "kind": "number",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "82689 token",
+  "provenance": [],
+  "context": "…es 23 → 25 ``` 所以不是连不上。我看一下它现在忙什么、哪一步慢： **连得上，你的 DSH 此刻正在用。** \"重试\"不是连不上，是**超时** —— 服务端现在**单槽排队**： ``` 状态: reading queued: 2 阶段: reading the prompt 本次请求: 82689 token，已读 80620（50.5 秒，prefill 1488 tok/s） ``` 原因在这些数字里（最近 10 次请求）： DSH 的超时是 **5 分钟空闲**，而它日志里\"第 5 次\"更像它自己的**重试策略**（`normal` = 5 retries）。所以要查服务端有没有**拒绝(409/503)**——…",
+  "tools": [
+   "pwsh",
+   "grep",
+   "ask_user_question",
+   "write"
+  ]
+ },
+ {
+  "id": 3,
+  "kind": "package",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "cdn.jsdelivr.net",
+  "provenance": [
+   "✗ [node_modules/cdn.jsdelivr.net] 未安装（在 E:\\dsh-doubt 找不到）",
+   "✗ [E:\\dsh-doubt\\package.json] 未在依赖里声明"
+  ],
+  "context": "…k, ghcr image ([offline guide](https://docs.openwebui.cn/tutorials/offline-mode/)); the slim image has no embed/rerank models and its code interpreter fetches `cdn.jsdelivr.net` (v0.11.4 notes) → use the standard image. Multi-user: free roles/groups + OIDC + LDAP (v0.11.4 adds IdP role mapping, blocked groups). IM: no Feishu/DingTalk/…",
+  "tools": [
+   "pwsh",
+   "subagent",
+   "web_fetch",
+   "web_search",
+   "send_message"
+  ]
+ },
+ {
+  "id": 508,
+  "kind": "package",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "strata-unsloth-ud-q4_k_xl.json.pre-opt-backup",
+  "provenance": [
+   "✗ [node_modules/strata-unsloth-ud-q4_k_xl.json.pre-opt-backup] 未安装（在 E:\\dsh-doubt 找不到）",
+   "✗ [E:\\dsh-doubt\\package.json] 未在依赖里声明"
+  ],
+  "context": "…r the GPU (the hottest) ``` **落地的三处改动**（其余全保持）：`--resident-budget-gib 46 → 50`（引擎 clamp 到 48.14）、`--pool-workers 15 → 18`、`env` 增加 `STRATA_PARTIAL_PIN=1`。备份在 `strata-unsloth-ud-q4_k_xl.json.pre-opt-backup`。 ## 两个反直觉、但可复现的发现 - **注册量的甜点是 24 GiB**：16→16.9、**24→18.3**、32→17.4、40→17.3。 - **CPU 池线程的甜点是 18**：12→17.0、15→16.1、**18→17.9**、21→17.0、**24（=物理核数）→14.1 崩**。\"开…",
+  "tools": [
+   "create_goal",
+   "pwsh",
+   "grep",
+   "read",
+   "write",
+   "edit",
+   "job_output",
+   "get_goal",
+   "update_goal"
+  ]
+ },
+ {
+  "id": 902,
+  "kind": "package",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "qwen38",
+  "provenance": [
+   "✗ [node_modules/qwen38] 未安装（在 E:\\dsh-doubt 找不到）",
+   "✗ [E:\\dsh-doubt\\package.json] 未在依赖里声明"
+  ],
+  "context": "…hell 精确替换。 现在删掉已失效的 Qwen3.8 段落。 README 已修正。最后做一次全局核验。 删干净了。 ## 已删除（回收 27.05 GB） - `E:\\AI\\models\\Qwen3.8-27B-Uncensored-Q8_0.gguf`（27.70 GB） - `E:\\AI\\start-qwen38-27b.bat`、`start-qwen38-27b-detached.bat`、`open-when-ready.ps1` - `C:\\Users\\Administrator\\Desktop\\Qwen3.8 27B 启动.bat` - `E:\\1009\\` 下我的两份脚本副本 + `qwen38` 日志 E 盘可…",
+  "tools": [
+   "pwsh",
+   "ask_user_question",
+   "read",
+   "edit"
+  ]
+ },
+ {
+  "id": 27,
+  "kind": "path",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "E:\\1009\\qwen3.8-flash-next-gguf-quant-report.md",
+  "provenance": [
+   "✓ [fs] 存在：E:\\1009\\qwen3.8-flash-next-gguf-quant-report.md"
+  ],
+  "context": "… evidence. Let me write the report. I spotted a broken URL in the report. Let me fix it. 调研完成，结果已发送给父 agent，完整报告落盘在 [qwen3.8-flash-next-gguf-quant-report.md](E:\\1009\\qwen3.8-flash-next-gguf-quant-report.md)。 ## 核心发现 **最大的答案本身就是\"没有答案\"**：公开社区**零来源**做过 IQ3_S 与 UD-Q4_K_XL 的直接对比。唯一对这两档排序的是 Strata 引擎自己的文档，阶梯为 `IQ3_S < UD-IQ4_XS < UD-Q4_K_XL`——即隐含说 Q4_K_XL 更好，但无数字无口径，…",
+  "tools": [
+   "web_fetch",
+   "web_search",
+   "subagent",
+   "write",
+   "edit",
+   "grep",
+   "present",
+   "send_message"
+  ]
+ },
+ {
+  "id": 283,
+  "kind": "path",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "E:\\AI\\models\\Strata-data\\mtp\\rt",
+  "provenance": [
+   "✓ [fs] 存在：E:\\AI\\models\\Strata-data\\mtp\\rt"
+  ],
+  "context": "…全一致（这正是 `--compat-bf16` 的作用）。pack 目录 1.39 GB。 视觉编码器也被复用了（`vision encoder already downloaded`）。现在在打包 MTP 草稿层。 # 🎉 Setup 完成（exit 0） ``` [ok] MTP draft layer: E:\\AI\\models\\Strata-data\\mtp\\rt === Step 7: writing the start script === [ok] hybrid CPU (8 performance + 16 efficiency cores): 15 CPU expert workers [ok] start script: run-unsloth-ud-iq4_xs.…",
+  "tools": [
+   "pwsh",
+   "read",
+   "read_image",
+   "write",
+   "edit",
+   "get_goal",
+   "update_goal"
+  ]
+ },
+ {
+  "id": 652,
+  "kind": "path",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "E:\\AI\\repos\\Strata\\run-iq3_s.bat",
+  "provenance": [
+   "✓ [fs] 存在：E:\\AI\\repos\\Strata\\run-iq3_s.bat"
+  ],
+  "context": "…ta 启动.bat`** | 自动 = 最新的 `run-*.bat` → **IQ3_XXS** | **日常就用这个**；有状态提示、出错会 pause 不闪退 | | `E:\\AI\\repos\\Strata\\run-iq3_xxs.bat` | IQ3_XXS（当前默认） | 想直接起、跳过外面的提示 | | `E:\\AI\\repos\\Strata\\run-iq3_s.bat` | IQ3_S（质量档、\"追平完整模型\"） | 想要最高质量，慢 34% | | `START-HERE.bat` | **弹菜单让你选** | 上游通用入口，但会先跑一遍 setup 自检，慢；装了两个模型时它列：`1) iq3_xxs 2) iq3_s 3) 再装/改设置`（默认 1） | **停止**：…",
+  "tools": [
+   "pwsh",
+   "grep",
+   "read",
+   "edit"
+  ]
+ },
+ {
+  "id": 6,
+  "kind": "path",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "s://docs.openwebui.com/license",
+  "provenance": [
+   "✗ [fs] 不存在：s://docs.openwebui.com/license"
+  ],
+  "context": "…adence | ★ | License | |---|---|---|---|---| | **Open WebUI** | v0.11.4 / 2026-09-21 | ~3 wks | 154,229 | [BSD-3 ≤v0.6.5; v0.6.6+ branding clause, non-OSI](https://docs.openwebui.com/license) | | **LibreChat** | v0.8.8 / 2026-10-01 (rc flag) | rc weekly | 45,410 | MIT (org moved to LibreChat-AI; joining ClickHouse) | | **AnythingLLM** | v1.17.0 / 2…",
+  "tools": [
+   "pwsh",
+   "subagent",
+   "web_fetch",
+   "web_search",
+   "send_message"
+  ]
+ },
+ {
+  "id": 618,
+  "kind": "path",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "/v1/chat/completions",
+  "provenance": [
+   "✗ [fs] 不存在：/v1/chat/completions"
+  ],
+  "context": "**启用了，而且是两条路都实跑验证过的 —— 结论：能用，7/7 全过。** 我刚才在跑的就是实测（不是看配置猜），结果： | 测试 | 结果 | 耗时 | |---|---|---| | 原生 function calling（OpenAI `/v1/chat/completions` + `tools`） | ✅ 正确返回 `tool_calls`，参数合法 `{\"city\":\"哈尔滨\",\"unit\":\"celsius\"}` | 4.9s | | 两个工具里选对的那个 | ✅ 选 `get_time` 而不是 `get_weather` | 3.6s | | 把工具结果喂回去 | ✅ 用上了 `…",
+  "tools": [
+   "job_kill"
+  ]
+ },
+ {
+  "id": 1008,
+  "kind": "path",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "s://www.codebuddy.cn/docs/workbuddy/Download-History",
+  "provenance": [
+   "✗ [fs] 不存在：s://www.codebuddy.cn/docs/workbuddy/Download-History"
+  ],
+  "context": "…lid** | | 产品名 | WorkBuddy | | 说明 | WorkBuddy Desktop - AI Agent Desktop Application | | 文件版本 | 5.7.7 | | 项目 | 值 | |---|---| | 来源 | 官网 [codebuddy.cn 历史版本页](https://www.codebuddy.cn/docs/workbuddy/Download-History) 首位（当前最新） | | CDN | `acc-1258344699.cos.ap-guangzhou.myqcloud.com`（腾讯云 COS 官方源） | | 体积 | 435,848,544 字节（415.6 MB），与服务端一致 | | 服务端时间 | 2026-10-12 | | 耗时 | 约 1 分 …",
+  "tools": [
+   "web_search",
+   "pwsh",
+   "job_output",
+   "present"
+  ]
+ },
+ {
+  "id": 852,
+  "kind": "reversal",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "抱歉",
+  "provenance": [],
+  "context": "…w blocked purely on credentials, so let me prepare the fastest transfer path (it works around that 176 ms link) while I confirm the account. 理解你的火气 — 是我追问太多次了，抱歉。我不再问问题，把结论和能直接用的一次性方案给你。 主因已经测出来了，**跟模型多大无关：这台内网机的往返延迟是 176 ms**（网关才 9 ms、外网 53 ms，而它比外网还慢 3 倍多）。任何走 SMB 的传输在这种延迟下都会被卡死，千兆网也只能跑到几十 MB/s 甚至更低。 唯一的拦路石是凭证：`admi…",
+  "tools": [
+   "pwsh",
+   "ask_user_question",
+   "job_output",
+   "write",
+   "job_kill",
+   "grep"
+  ]
+ },
+ {
+  "id": 910,
+  "kind": "reversal",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "更正一下",
+  "provenance": [],
+  "context": "…K 位置时降到 **6.17 t/s**（预填充反而升到 627.7 t/s）。128K 满上下文会进一步下降。社区在同架构上测的是 0→262K 衰减约 46%、无断崖（[llama.cpp #27623](https://github.com/ggml-org/llama.cpp/issues/27623)——顺便更正一下：那条 issue 标题写着「解码崩 25 倍」，但**原报告者已撤回**，实测是单调衰减，另有 4 个独立复现失败）。所以 128K 能跑，但满上下文时速度会明显低于 10.48 t/s。 **2. 16 GB 显存是硬限制。** 20.89 GB 权重必须分层，30/65 层在 GPU、其余在 CPU。24 GB…",
+  "tools": [
+   "pwsh",
+   "write",
+   "job_kill",
+   "job_output",
+   "edit",
+   "web_search",
+   "web_fetch",
+   "read",
+   "present"
+  ]
+ },
+ {
+  "id": 295,
+  "kind": "symbol",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "shutil.which(\"npx\")",
+  "provenance": [
+   "✓ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] 找到定义 which：E:\\dsh-doubt\\node_modules\\@types\\node\\fs\\promises.d.ts:186 E:\\dsh-doubt\\node_modules\\@types\\node\\fs.d.ts:196 E:\\dsh-doubt\\node_modules\\@types\\node\\http.d.ts:5"
+  ],
+  "context": "…读写**权限（能读、写、改、移动、建目录），不只是只读。所以开放哪个目录是你要定的。 路线 A + 全开，明白。动手前我要先核实两件技术细节——**Strata 怎么启动 MCP 进程**（决定 Windows 下该写 `npx` 还是 `cmd.exe /c npx`），以及执行工具前**有没有确认步骤**。 `shutil.which(\"npx\")` 会通过 PATHEXT 找到 `npx.cmd`，但 **CreateProcess 不能直接执行 .cmd** —— 这是个真实风险。实测一下： 两个关键发现，其中一个很重要： **① `npx` 可以直接用**（我的担心是多余的，实测 `Popen(['npx.cmd',...])` 返回码 0）： ```…",
+  "tools": [
+   "pwsh",
+   "ask_user_question",
+   "edit",
+   "read",
+   "job_kill",
+   "write"
+  ]
+ },
+ {
+  "id": 1113,
+  "kind": "symbol",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "ctx.systemPrompt.section({name,order,text})",
+  "provenance": [
+   "✓ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] 找到定义 section：E:\\dsh-doubt\\test\\loop.test.mjs:100"
+  ],
+  "context": "…rn 结束自动追加复核轮）、`prompts.ts`、`tool.ts`、`index.ts` - ⬜ 测试、README 中英、LICENSE、git 初始化 + GitHub 推送 **已确认的关键 API**（回头直接用，不用再查）：`ctx.tools.register(defineTool(...))`、`ctx.systemPrompt.section({name,order,text})`、`agent.followup(msg)`、`agent.session.snapshotEvents()`、`ctx.on('agent/status', h, {global:true})`。现成参考实现：[continue-retry.js](C:\\Users\\Administrator\\.dsh\\plugi…",
+  "tools": [
+   "pwsh",
+   "read",
+   "ops_grep",
+   "ops_glob",
+   "write"
+  ]
+ },
+ {
+  "id": 1128,
+  "kind": "symbol",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "agent.followup()",
+  "provenance": [
+   "✓ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] 找到定义 followup：E:\\dsh-doubt\\lib\\loop.d.ts:29 E:\\dsh-doubt\\src\\loop.ts:32 E:\\dsh-doubt\\test\\loop.test.mjs:27"
+  ],
+  "context": "…不可靠），靠三件事： | 环节 | 做法 | |---|---| | 1. 发现 | 每轮回答跑一次风险扫描（9 个纯函数检测器：命令 / 路径 / 版本号 / API 符号 / 包名 / 具体数字 / 代码块 / 绝对化措辞 / 改口认错） | | 2. 追问 | 风险分过阈值、且本轮没调用过取证工具 → 自动 `agent.followup()` 追加一轮：「这 6 条断言没证据，逐条取证后给修正版结论，错了就明说之前错了」 | | 3. 取证 | `verify_claims` 工具：模型提交 `command`/`fileExists`/`fileMatch`/`httpStatus`/`expr`，插件**在本机真跑**，回填退出码、实测输出、判定理由…",
+  "tools": [
+   "todo_write",
+   "ops_grep",
+   "read",
+   "write",
+   "edit",
+   "pwsh",
+   "job_kill"
+  ]
+ },
+ {
+  "id": 339,
+  "kind": "symbol",
+  "verdict": "inconclusive",
+  "onlineVerdict": "inconclusive",
+  "snippet": "dict(os.environ)",
+  "provenance": [
+   "✗ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] dict 只在非定义位置出现（弱证据）：E:\\dsh-doubt\\node_modules\\@types\\node\\crypto.d.ts:710 E:\\dsh-doubt\\node_modules\\@types\\node\\v8.d.ts:282 E:\\dsh-doubt\\node_modules\\@types\\node\\zlib.d.ts:117"
+  ],
+  "context": "… env=env) ``` 而 `runconfig.py` 里**没有** env 配置块。所以必须看清这个 `env` 是怎么构造的： **关键代码找到了** —— `server.py:2147`： ```python def child_env(cfg: dict) -> dict: env = dict(os.environ) # ← 复制服务器进程的完整环境 ``` 也就是说引擎拿到的是 `dict(os.environ)`，**我的变量应该能传下去**。但我要确认这个函数没有剔除未知变量，并且**实测**整条链路： # 是同步的，而且我**在引擎日志里抓到了铁证** 先回答你的问题：**是**。而且我顺手发现了一个更好的做…",
+  "tools": [
+   "read",
+   "pwsh",
+   "edit",
+   "job_kill"
+  ]
+ },
+ {
+  "id": 152,
+  "kind": "symbol",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "get_prebuilt()",
+  "provenance": [
+   "✗ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] 找不到标识符 get_prebuilt"
+  ],
+  "context": "…b release CDN is fast (8.24 MB/s)** via the API route — github.com itself is just blocked. Let me see how setup consumes the engine so I can feed it locally. `get_prebuilt()` accepts a non-HTTP base and skips the HEAD check — and it short-circuits entirely if `engine/BUILD.json` already exists. Let me check the verification step so…",
+  "tools": [
+   "web_fetch",
+   "pwsh",
+   "create_goal",
+   "ask_user_question",
+   "read",
+   "write",
+   "edit",
+   "job_kill"
+  ]
+ },
+ {
+  "id": 297,
+  "kind": "symbol",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "Popen(['...npx.cmd'])",
+  "provenance": [
+   "✗ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] 找不到标识符 Popen"
+  ],
+  "context": "…080/v1`，**文件权限和工具循环由客户端负责**（它们自带确认机制）。你机器上 VS Code 已装，但那几个 CLI 客户端没装。 - 一个我担心过但**实测没问题**的点：`serve/mcp.py` 用 `shutil.which(\"npx\")` 在 Windows 上会拿到 `npx.CMD`，我实测 `Popen(['...npx.cmd'])` 返回码 0——Python 能直接启动 .cmd，不需要 `cmd.exe /c` 包装。 细节都写进了 [STRATA-DEPLOY.md](E:\\1009\\STRATA-DEPLOY.md) 第 8 节。",
+  "tools": [
+   "pwsh",
+   "ask_user_question",
+   "edit",
+   "read",
+   "job_kill",
+   "write"
+  ]
+ },
+ {
+  "id": 520,
+  "kind": "symbol",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "is_iq()",
+  "provenance": [
+   "✗ [E:\\dsh-doubt\\node_modules , E:\\dsh-doubt] 找不到标识符 is_iq"
+  ],
+  "context": "…ne claim before it hardens into the doc — why Q8_0 passes that check but Q6_K doesn't: Wait — I need to correct myself before this goes into the doc as fact: `is_iq()` at line 1919 **includes 14 (Q6_K)**, so the embedding *type* is not the blocker. Comparing the two files' embedding tensor properly: Now it's definitive — an…",
+  "tools": [
+   "create_goal",
+   "pwsh",
+   "write",
+   "grep",
+   "job_output",
+   "read",
+   "edit",
+   "job_kill",
+   "update_goal"
+  ]
+ },
+ {
+  "id": 1103,
+  "kind": "symbol",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "ctx.on('internal/plugin')",
+  "provenance": [],
+  "context": "…（含 `dsh.bundle.patch`、cordis peerDep、devDeps）· [tsconfig.json](E:\\dsh-plugin-dev\\tsconfig.json) - [src/index.ts](E:\\dsh-plugin-dev\\src\\index.ts) 插件入口样例（函数形态 + `ctx.on('internal/plugin')` + `ctx.inject`）· [cordis.patch.yml](E:\\dsh-plugin-dev\\cordis.patch.yml) - [scripts/link-to-profile.mjs](E:\\dsh-plugin-dev\\scripts\\link-to-profile.mjs) 离线装进 pr…",
+  "tools": [
+   "ops_glob",
+   "pwsh",
+   "read",
+   "ops_grep",
+   "write",
+   "present"
+  ]
+ },
+ {
+  "id": 1102,
+  "kind": "version",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "5.9.3",
+  "provenance": [
+   "✓ [node_modules] 已安装 typescript@5.9.3"
+  ],
+  "context": "…| 依赖 | 检查结果 | |---|---| | Node v24.21.0 / pnpm 12.10.1 / npm 11.19 / Git 2.56 | ✅ 本来就有（插件 `engines` 要 `^22.19 \\|\\| >=24`，满足） | | **TypeScript** | ❌ 原本没装 → ✅ 已装 5.9.3 | | **@deepseek-ai/cordis 类型** | ❌ 原本没有（profile 里只有插件，cordis 由宿主注入）→ ✅ 已装 4.0.4，类型入口 `lib/types/index.d.ts` | | **@deepseek-ai/dsh 核心** | ❌ 原本没有 → ✅ 已装 0.2.0-r…",
+  "tools": [
+   "ops_glob",
+   "pwsh",
+   "read",
+   "ops_grep",
+   "write",
+   "present"
+  ]
+ },
+ {
+  "id": 1170,
+  "kind": "version",
+  "verdict": "confirmed",
+  "onlineVerdict": "confirmed",
+  "snippet": "typescript 5.9.3",
+  "provenance": [
+   "✓ [node_modules/typescript] 实际 5.9.3，断言 5.9.3",
+   "✓ [E:\\dsh-doubt\\package.json] 声明范围 ^5，断言 5.9.3（满足）"
+  ],
+  "context": "…是「**zero parent context**」，正好是 Tier C 需要的无草稿上下文。修： 联网路径里还藏着一个同类 bug：**registry 请求失败被算成\"反驳\"**——网络抖动就能造成假证伪。先修再测： 联网交叉跑通了（两个 registry 都可达）。但**测出两个真 bug**： 1. `typescript 5.9.3` 被判 `inconclusive`——因为「声明范围 `^5`」被算成反驳。**`^5` 明明满足 5.9.3**。我的范围判断写错了。 2. `packageVersion` 的来源标签分隔符混用（`E:\\dsh-doubt/package.json`）。 修范围语义（不引入 semver 依赖，自己实现并测）…",
+  "tools": [
+   "pwsh",
+   "web_fetch",
+   "ops_grep",
+   "ops_glob",
+   "edit",
+   "read",
+   "write"
+  ]
+ },
+ {
+  "id": 1171,
+  "kind": "version",
+  "verdict": "confirmed",
+  "onlineVerdict": "inconclusive",
+  "snippet": "5.9.3",
+  "provenance": [
+   "✓ [node_modules] 已安装 typescript@5.9.3"
+  ],
+  "context": "…rent context**」，正好是 Tier C 需要的无草稿上下文。修： 联网路径里还藏着一个同类 bug：**registry 请求失败被算成\"反驳\"**——网络抖动就能造成假证伪。先修再测： 联网交叉跑通了（两个 registry 都可达）。但**测出两个真 bug**： 1. `typescript 5.9.3` 被判 `inconclusive`——因为「声明范围 `^5`」被算成反驳。**`^5` 明明满足 5.9.3**。我的范围判断写错了。 2. `packageVersion` 的来源标签分隔符混用（`E:\\dsh-doubt/package.json`）。 修范围语义（不引入 semver 依赖，自己实现并测）…",
+  "tools": [
+   "pwsh",
+   "web_fetch",
+   "ops_grep",
+   "ops_glob",
+   "edit",
+   "read",
+   "write"
+  ]
+ },
+ {
+  "id": 1156,
+  "kind": "version",
+  "verdict": "refuted",
+  "onlineVerdict": "refuted",
+  "snippet": "typescript 9.9.9",
+  "provenance": [
+   "✗ [node_modules/typescript] 实际 5.9.3，断言 9.9.9",
+   "✗ [E:\\dsh-doubt\\package.json] 声明范围 ^5，断言 9.9.9（不满足）"
+  ],
+  "context": "… bug：路径字符类不排除中文，`E:\\a\\b.json。日志在` 整段中文都被吞进路径了。修字符类。 路径修复生效（第 4 条被 `capPerKind=3` 截断，符合预期）。跑全量： 六套全绿。现在同步配置、清单、文档，然后提交。 Demo 跑通了，但暴露一个真缺口：**`cordis 4.0.4` / `typescript 9.9.9` 这类「裸版本号」完全没被抓到**——`VERSION_RE` 只认 `v1.2.3` / `^4.0.4` 形态。这恰恰是最常见的写法。补上： 又暴露一个**更严重的假证伪**：`cordis 4.0.4` 只被抓成 `4.0.4`（丢了包名），于是 `versionClaim` 拿它去比 **dsh-doubt…",
+  "tools": [
+   "ops_grep",
+   "ops_glob",
+   "write",
+   "edit",
+   "read",
+   "pwsh"
+  ]
+ },
+ {
+  "id": 0,
+  "kind": "version",
+  "verdict": "unverifiable",
+  "onlineVerdict": "confirmed",
+  "snippet": "v0.11.4",
+  "provenance": [],
+  "context": "…ds badges; API was rate-limited mid-run, so some stars are rounded) | Tool | Version / date | Cadence | ★ | License | |---|---|---|---|---| | **Open WebUI** | v0.11.4 / 2026-09-21 | ~3 wks | 154,229 | [BSD-3 ≤v0.6.5; v0.6.6+ branding clause, non-OSI](https://docs.openwebui.com/license) | | **LibreChat** | v0.8.8 / 2026-10-01…",
+  "tools": [
+   "pwsh",
+   "subagent",
+   "web_fetch",
+   "web_search",
+   "send_message"
+  ]
+ },
+ {
+  "id": 518,
+  "kind": "version",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "127.0.0",
+  "provenance": [],
+  "context": "…自己造 BF16 表 + 加 `--embd-gguf`（脚本留在 `E:\\1009\\logs\\eval\\make-embd-bf16.py`，重装后要重跑）。而且当前是 **`images: off`**，没给它开视觉。 ## 现在的状态（请你确认） - **服务正在跑 UD-IQ3_XXS**（<http://127.0.0.1:8080>，256K，MCP 工具 14 个）—— 你可以直接试试快多少 - **注意**：桌面启动器按\"最新的 run-*.bat\"选，现在 `run-unsloth-ud-iq3_xxs.bat` 最新，**所以它也会启动 IQ3_XXS**。想回 Q4_K_XL 就双击 `run-unsloth-ud-q4…",
+  "tools": [
+   "create_goal",
+   "pwsh",
+   "write",
+   "grep",
+   "job_output",
+   "read",
+   "edit",
+   "job_kill",
+   "update_goal"
+  ]
+ },
+ {
+  "id": 993,
+  "kind": "version",
+  "verdict": "unverifiable",
+  "onlineVerdict": "unverifiable",
+  "snippet": "32.0.16",
+  "provenance": [],
+  "context": "…15132/16303 MiB 设备管理器 : Status = OK 驱动日期 : 2026-09-17（Provider: NVIDIA） ``` | 适配器 | 驱动版本 | 日期 | 状态 | |---|---|---|---| | NVIDIA RTX 5080 Laptop | 617.14（注册表 32.0.16.1714） | 2026-09-17 | OK | | Intel Graphics | 32.0.101.8860 | 2026-06-25 | OK | ## 已下载：[617.42 笔记本版驱动](D:\\浏览器下载\\617.42-notebook-win10-win11-64bit-international…",
+  "tools": [
+   "pwsh",
+   "web_search",
+   "web_fetch",
+   "ask_user_question",
+   "job_output",
+   "present"
+  ]
+ }
+]

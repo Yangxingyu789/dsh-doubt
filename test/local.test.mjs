@@ -72,23 +72,30 @@ const realClaim = versionClaim('typescript 5.9.3', cwd, 'typescript')
 assert.equal(realClaim.ok, true, `真实版本应被支持：${realClaim.detail}`)
 assert.equal(realClaim.sources.some((s) => !s.ok && !s.weak), false, `不应有反驳来源：${realClaim.detail}`)
 
-// 5) 符号存在性：本仓库真实导出的函数名应找到
-const sym = symbolExists('normalizeConfig(x)', cwd)
-assert.equal(sym.ok, true, `应找到 normalizeConfig：${sym.detail}`)
-const noSym = symbolExists('thisFunctionDoesNotExistAnywhere(x)', cwd)
-assert.equal(noSym.ok, false, '不存在的标识符应判否（自指文件已被排除）')
-
-// 5b) 依赖 .d.ts 里的真实定义 → 强证据（跨 node_modules 查找）
-const strongSym = symbolExists('randomUUID()', cwd)
-assert.equal(strongSym.ok, true, `randomUUID 在 @types/node 里有定义：${strongSym.detail}`)
-assert.notEqual(strongSym.sources[0].weak, true, '定义位置命中应是强证据')
-
-// 5c) 只有调用、没有定义 → 弱证据（中性），用临时 fixture 保证确定性
+// 5) 符号存在性：一律用**外部 fixture**，因为插件自己的包必须被排除——
+//    评测实测过 `agent.followup()` 被插件自己生成的 lib/loop.d.ts 「证实」，那是自指背书。
 const fixture = join(tmpdir(), `dsh-doubt-fixture-${process.pid}`)
-mkdirSync(fixture, { recursive: true })
-writeFileSync(join(fixture, 'probe.mjs'), 'zzNotDefinedAnywhereFn() // 只有调用\n', 'utf8')
-const weakSym = symbolExists('zzNotDefinedAnywhereFn()', fixture)
-assert.equal(weakSym.sources.length, 1)
+mkdirSync(join(fixture, 'node_modules', 'zzdep'), { recursive: true })
+writeFileSync(join(fixture, 'app.ts'), 'export function zzDefinedHere(x: number): number { return x }\n', 'utf8')
+writeFileSync(join(fixture, 'node_modules', 'zzdep', 'index.d.ts'), 'export declare function zzFromDep(): void\n', 'utf8')
+writeFileSync(join(fixture, 'caller.ts'), 'zzOnlyCalledFn() // 只有调用\n', 'utf8')
+
+const sym = symbolExists('zzDefinedHere(x)', fixture)
+assert.equal(sym.ok, true, `外部源码里的定义应找到：${sym.detail}`)
+
+const depSym = symbolExists('zzFromDep()', fixture)
+assert.equal(depSym.ok, true, `依赖 .d.ts 里的定义应找到：${depSym.detail}`)
+assert.notEqual(depSym.sources[0].weak, true, '定义位置命中应是强证据')
+
+const selfSym = symbolExists('normalizeConfig(x)', cwd)
+assert.equal(selfSym.noEvidence, true, `插件自己仓库的定义不得当证据（自指背书）：${selfSym.detail}`)
+
+const noSym = symbolExists('thisFunctionDoesNotExistAnywhere(x)', fixture)
+assert.equal(noSym.noEvidence, true, `找不到标识符应承认无法判断，不得反驳：${noSym.detail}`)
+
+// 只有调用、没有定义 → 弱证据（中性）
+const weakSym = symbolExists('zzOnlyCalledFn()', fixture)
+assert.equal(weakSym.sources.length, 1, `应有弱证据来源：${weakSym.detail}`)
 assert.equal(weakSym.sources[0].weak, true, `只有调用没有定义，应标弱证据：${weakSym.detail}`)
 assert.equal(weakSym.ok, false, '弱证据不算支持')
 rmSync(fixture, { recursive: true, force: true })

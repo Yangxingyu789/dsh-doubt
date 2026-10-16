@@ -1,0 +1,55 @@
+[
+  { "id": 68, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "抽取物是 \"100%\"，不是断言" },
+  { "id": 735, "truth": "unknown", "extraction_ok": true, "asserted": true, "method": "绝对化措辞检测，观点非事实" },
+  { "id": 945, "truth": "unknown", "extraction_ok": true, "asserted": true, "method": "同上" },
+  { "id": 226, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "抽取物是检测器描述文本" },
+  { "id": 343, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "同上" },
+  { "id": 534, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "同上" },
+
+  { "id": 97, "truth": "true", "extraction_ok": true, "asserted": true, "method": "Get-Command git 存在；该会话实测过 gh-proxy 可达" },
+  { "id": 722, "truth": "true", "extraction_ok": false, "asserted": true, "method": "指代物是路径+散文，不是命令；Test-Path 该文件存在" },
+  { "id": 827, "truth": "true", "extraction_ok": true, "asserted": true, "method": "Get-Command curl 存在（C:\\Windows\\system32\\curl.exe）" },
+  { "id": 50, "truth": "unknown", "extraction_ok": false, "asserted": true, "method": "含空格的路径被在空格处截断，插件去 PATH 里找 \"F:\\Call\"；Test-Path 完整路径 False（我猜的 exe 名），断言本体无法定位" },
+  { "id": 396, "truth": "true", "extraction_ok": false, "asserted": false, "method": "代码块里的日志文本，不是命令；该会话工具输出显示 .done 存在" },
+  { "id": 787, "truth": "true", "extraction_ok": false, "asserted": false, "method": "代码块里的中文散文，不是命令；数值来自该会话工具输出" },
+  { "id": 431, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "日志行被当命令" },
+  { "id": 674, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "散文被当命令" },
+  { "id": 1073, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "设备查询输出被当命令" },
+
+  { "id": 13, "truth": "unknown", "extraction_ok": true, "asserted": true, "method": "外部资料里的数字，本机无法核验" },
+  { "id": 380, "truth": "true", "extraction_ok": true, "asserted": true, "method": "数值来自该会话自己的工具输出（下载进度），已被实测支撑" },
+  { "id": 797, "truth": "true", "extraction_ok": true, "asserted": true, "method": "同上，token 数来自服务端状态输出" },
+
+  { "id": 3, "truth": "true", "extraction_ok": false, "asserted": false, "method": "cdn.jsdelivr.net 是 CDN 域名，回答没断言它是 npm 包；npm registry 404 与断言无关" },
+  { "id": 508, "truth": "true", "extraction_ok": false, "asserted": false, "method": "那是本地文件名，不是包名" },
+  { "id": 902, "truth": "true", "extraction_ok": false, "asserted": false, "method": "从 \"Qwen3.8\" 截出的垃圾 token" },
+
+  { "id": 27, "truth": "true", "extraction_ok": true, "asserted": true, "method": "Test-Path True" },
+  { "id": 283, "truth": "true", "extraction_ok": true, "asserted": true, "method": "Test-Path True" },
+  { "id": 652, "truth": "true", "extraction_ok": true, "asserted": true, "method": "Test-Path True（同段提到的 run-iq3_xxs.bat 为 False，说明该回答另有真错）" },
+
+  { "id": 6, "truth": "true", "extraction_ok": false, "asserted": true, "method": "URL 被截成 \"s://...\"，当成文件路径去 fs 找 → 必然不存在" },
+  { "id": 618, "truth": "true", "extraction_ok": false, "asserted": true, "method": "/v1/chat/completions 是 API 端点，不是文件路径" },
+  { "id": 1008, "truth": "true", "extraction_ok": false, "asserted": true, "method": "同 #6，URL 截断" },
+
+  { "id": 852, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "话语标记「抱歉」被当改口信号" },
+  { "id": 910, "truth": "unknown", "extraction_ok": false, "asserted": false, "method": "「更正一下」是正常自我修正措辞" },
+
+  { "id": 295, "truth": "true", "extraction_ok": true, "asserted": true, "method": "独立核实：E:\\AI\\repos\\Strata 的 .py 里 shutil.which 命中 34 处。但插件的证据是 @types/node 里的 which —— 指代物错了，结论蒙对" },
+  { "id": 1113, "truth": "true", "extraction_ok": true, "asserted": true, "method": "独立核实：cordis d.ts 里 systemPrompt.section 存在。但插件的证据是**我自己写的 test/loop.test.mjs** —— 自指证据" },
+  { "id": 1128, "truth": "true", "extraction_ok": true, "asserted": true, "method": "独立核实：cordis d.ts 里 agent.followup 存在。但插件的证据是**我自己生成的 lib/loop.d.ts** —— 自指证据" },
+  { "id": 339, "truth": "true", "extraction_ok": true, "asserted": true, "method": "dict 是 Python 内建；插件在 TS 类型定义里搜，语言作用域错了" },
+  { "id": 152, "truth": "true", "extraction_ok": true, "asserted": true, "method": "独立核实：get_prebuilt 在 E:\\AI\\repos\\Strata 的 .py 里命中 41 处。插件判「找不到标识符」→ 假证伪" },
+  { "id": 297, "truth": "true", "extraction_ok": true, "asserted": true, "method": "独立核实：Popen 命中 102 处 → 假证伪" },
+  { "id": 520, "truth": "true", "extraction_ok": true, "asserted": true, "method": "独立核实：is_iq 命中 1 处 → 假证伪" },
+  { "id": 1103, "truth": "unknown", "extraction_ok": true, "asserted": true, "method": "ctx.on('internal/plugin') 是否存在未核实" },
+
+  { "id": 1102, "truth": "true", "extraction_ok": true, "asserted": true, "method": "node_modules/typescript = 5.9.3" },
+  { "id": 1170, "truth": "true", "extraction_ok": true, "asserted": true, "method": "同上" },
+  { "id": 1171, "truth": "true", "extraction_ok": true, "asserted": true, "method": "同上" },
+  { "id": 1156, "truth": "false", "extraction_ok": true, "asserted": false, "method": "9.9.9 不存在（registry 404 / 本机 5.9.3）；但它是我自己举的**反例样本**，回答并未断言它为真" },
+
+  { "id": 0, "truth": "unknown", "extraction_ok": true, "asserted": true, "method": "Open WebUI v0.11.4 需查 GitHub release，未核" },
+  { "id": 518, "truth": "unknown", "extraction_ok": false, "asserted": true, "method": "IP 127.0.0.1 被截成 127.0.0 当成版本号" },
+  { "id": 993, "truth": "unknown", "extraction_ok": true, "asserted": true, "method": "驱动版本号，需查 nvidia-smi，未核" }
+]

@@ -7,6 +7,16 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+/** 插件自己所在的包根：符号扫描必须排除它，否则插件会拿自己写的代码给自己背书 */
+function selfPackageRoot(): string {
+  try {
+    return walkUp(dirname(fileURLToPath(import.meta.url)), (d) => existsSync(join(d, 'package.json'))) ?? ''
+  } catch {
+    return ''
+  }
+}
 
 export interface SourceHit {
   /** 来源标签，例如 node_modules/x/package.json */
@@ -122,10 +132,11 @@ export function packageVersion(claim: string, name: string, cwd: string): Oracle
     if (meta?.version) {
       sources.push({ label: `node_modules/${bare}/package.json`, value: `已安装 ${meta.version}`, ok: true })
     } else {
-      sources.push({ label: `node_modules/${bare}`, value: `未安装（在 ${nmDir} 找不到）`, ok: false })
+      // 本机没装 ≠ 回答错了：回答可能只是提到这个包，或说的是另一台机器/另一个仓库
+      sources.push({ label: `node_modules/${bare}`, value: `本机（${nmDir}）未安装`, ok: false, weak: true })
     }
   } else {
-    sources.push({ label: 'node_modules', value: `从 ${cwd} 向上找不到 node_modules`, ok: false })
+    sources.push({ label: 'node_modules', value: `从 ${cwd} 向上找不到 node_modules`, ok: false, weak: true })
   }
 
   const declared = walkUp(cwd, (d) => existsSync(join(d, 'package.json')))
@@ -134,13 +145,10 @@ export function packageVersion(claim: string, name: string, cwd: string): Oracle
     const fields = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'] as const
     let range: string | undefined
     for (const f of fields) range ??= pkg[f]?.[bare]
-    sources.push({
-      label: join(declared, 'package.json'),
-      value: range ? `声明范围 ${range}` : '未在依赖里声明',
-      ok: Boolean(range),
-    })
+    if (range) sources.push({ label: join(declared, 'package.json'), value: `声明范围 ${range}`, ok: true })
   }
 
+  if (!sources.some((s) => s.ok)) return noEvidence('packageVersion', claim, `本机没有该包（${bare}）；除非回答断言它装在本机，否则不构成反驳`)
   return summarize('packageVersion', claim, sources)
 }
 
@@ -342,10 +350,13 @@ export function symbolExists(claim: string, cwd: string): OracleResult {
   const id = /([A-Za-z_$][\w$]*)\s*\(/.exec(sig)?.[1] ?? sig.split('.').pop() ?? ''
   if (!id || id.length < 3) return noEvidence('symbolExists', claim, '读不出可查找的标识符')
 
-  const roots: string[] = []
+  let roots: string[] = []
   const nm = walkUp(cwd, (d) => existsSync(join(d, 'node_modules')))
   if (nm) roots.push(join(nm, 'node_modules'))
+  // 绝不扫插件自己的包：评测里 `agent.followup()` 曾被**我自己生成的 lib/loop.d.ts** 证实——自指证据
+  const selfRoot = selfPackageRoot()
   roots.push(cwd)
+  roots = roots.filter((r) => !selfRoot || !r.startsWith(selfRoot))
 
   const strong: string[] = []
   const weak: string[] = []
@@ -396,5 +407,6 @@ export function symbolExists(claim: string, cwd: string): OracleResult {
     // 中性：只在调用/引用位置出现，既不能确认也不能反驳（定义可能在未扫描的产物里）
     return summarize('symbolExists', claim, [{ label: roots.join(' , '), value: `${id} 只在非定义位置出现（弱证据）：${weak.join(' ')}`, ok: false, weak: true }])
   }
-  return summarize('symbolExists', claim, [{ label: roots.join(' , '), value: `找不到标识符 ${id}`, ok: false }])
+  // 找不到 ≠ 不存在：回答可能在讲另一个仓库/另一门语言的代码（评测实测 3 条假证伪全在这里）
+  return noEvidence('symbolExists', claim, `在 ${roots.join(' , ')} 里找不到 ${id}；不能据此断言回答错了（作用域可能不是这里）`)
 }

@@ -60,10 +60,22 @@ export function packageForVersionClaim(text: string): string | null {
   return name
 }
 
+/** 回答是否真的在断言「这是个 npm 包」——只是提到一个名词，不构成可反驳的存在断言 */
+const NPM_CONTEXT_RE = /\b(npm|npx|pnpm|yarn|package|dependency|dependencies|install|registry|node_modules|add)\b|包|依赖|安装|装一个|lock/i
+
+function assertsNpmPackage(text: string | undefined, token: string): boolean {
+  const src = text ?? token
+  const at = src.indexOf(token)
+  if (at < 0) return false
+  const window = src.slice(Math.max(0, at - 100), at + token.length + 100)
+  return NPM_CONTEXT_RE.test(window)
+}
+
 /**
  * 生成断言列表。cwd 用于本机查找 node_modules / package.json。
+ * `text` 是原回答全文：用来判断某个名词是不是**真的被断言**为 npm 包。
  */
-export function extractClaims(findings: readonly Finding[], opts: { executeAnswerCommands?: boolean } = {}): Claim[] {
+export function extractClaims(findings: readonly Finding[], opts: { executeAnswerCommands?: boolean; text?: string } = {}): Claim[] {
   const claims: Claim[] = []
   let n = 0
   const seen = new Set<string>()
@@ -89,10 +101,21 @@ export function extractClaims(findings: readonly Finding[], opts: { executeAnswe
         push(f.kind, f.snippet, checks, bin ? undefined : '空命令')
         break
       }
-      case 'path':
+      case 'path': {
+        // Windows 上 `/v1/chat/completions` 这类 POSIX 绝对路径多半是 API 端点或别机路径，
+        // 去本机文件系统找必然「不存在」→ 假证伪。判不了就别判。
+        if (process.platform === 'win32' && /^~?\//.test(f.snippet)) {
+          push(f.kind, f.snippet, [], 'Windows 上的 POSIX 风格路径：可能是 API 端点或另一台机器的路径，本机无法核验')
+          break
+        }
         push(f.kind, f.snippet, [{ kind: 'fileExists', path: f.snippet, claim: f.snippet }])
         break
+      }
       case 'package':
+        if (!assertsNpmPackage(opts.text, f.snippet)) {
+          push(f.kind, f.snippet, [], '回答只是提到这个名词，没断言它是可安装的包；registry 查不到不构成反驳')
+          break
+        }
         push(f.kind, f.snippet, [{ kind: 'packageVersion', name: f.snippet, claim: f.snippet }])
         break
       case 'version': {

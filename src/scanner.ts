@@ -54,20 +54,33 @@ function codeBlocks(text: string): { lang: string; body: string }[] {
   return out
 }
 
-const SHELL_LANGS = new Set(['', 'bash', 'sh', 'shell', 'zsh', 'console', 'ps1', 'powershell', 'pwsh', 'cmd', 'batch', 'bat', 'text', ''])
+/**
+ * 空 lang 和 `text` 必须排除：真实语料里大量日志/散文放在无语言标注的围栏里，
+ * 曾被当成命令行 → 实测 9/13 的无效证伪来自这里。
+ */
+const SHELL_LANGS = new Set(['bash', 'sh', 'shell', 'zsh', 'fish', 'nu', 'console', 'ps1', 'powershell', 'pwsh', 'cmd', 'batch', 'bat'])
 const SHELL_PROMPT = /^\s*(?:\$|>|PS>|C:\\[^>]*>|#)\s*(.+)$/
+/** 日志/表格/散文特征：命中就不当命令（评测实测的假命令全来自这类行） */
+const NOT_A_COMMAND = /[\u4e00-\u9fff→⇒]|=>|\|\s|\d{2}:\d{2}:\d{2}|\bPID\b|\bMiB\b|\bGiB\b|\bStatus\s*=|={3,}|-{3,}/
 
 /** 从 shell 代码块里抽出「像是会被执行的命令行」 */
 function commandLines(text: string): string[] {
   const out: string[] = []
   for (const block of codeBlocks(text)) {
-    if (!SHELL_LANGS.has(block.lang)) continue
+    const labeled = SHELL_LANGS.has(block.lang)
     for (const raw of block.body.split('\n')) {
       const line = raw.trim()
       if (!line || line.startsWith('#') || line.startsWith('//')) continue
       const m = SHELL_PROMPT.exec(line)
+      // 无语言标注的块里，只有带提示符的行才算命令
+      if (!labeled && !m) continue
       const cmd = (m ? m[1] : line).trim()
-      if (cmd.length > 2 && /\s/.test(cmd) || /^[A-Za-z0-9_.-]+$/.test(cmd)) out.push(cmd)
+      if (cmd.length <= 2) continue
+      if (NOT_A_COMMAND.test(cmd)) continue
+      // 未加引号、含空格的可执行路径无法安全切分 argv → 不猜
+      const first = cmd.split(/\s+/)[0]
+      if (/[\\/.]/.test(first) && /\s/.test(cmd) && !/^["']/.test(cmd)) continue
+      out.push(cmd)
     }
   }
   return out
@@ -75,7 +88,8 @@ function commandLines(text: string): string[] {
 
 /** 路径字符类必须排除 CJK 与全角标点，否则 `E:\a\b.json。日志在` 会把整段中文吞进路径 */
 const NOT_IN_PATH = String.raw`^\s` + '`' + String.raw`'"<>()|、。，；：！？` + String.raw`\u3000-\u303f\u4e00-\u9fff\uff00-\uffef`
-const PATH_RE = new RegExp(`(?:[A-Za-z]:[/\\\\][${NOT_IN_PATH}]+)|(?:~?\\/(?:[\\w.@-]+\\/){1,}[\\w.@-]+)`, 'g')
+/** 盘符前必须有词边界：`https://…` 里的 `s:` 曾被当成盘符，截出 `s://docs.openwebui.com/license` 去文件系统里找 */
+const PATH_RE = new RegExp(`(?<![A-Za-z0-9])[A-Za-z]:[/\\\\][${NOT_IN_PATH}]+|~?\\/(?:[\\w.@-]+\\/){1,}[\\w.@-]+`, 'g')
 /** 路径后面紧跟的半角句读会被误吞（`E:\a\b.json.`），必须剥掉 */
 const TRAILING_PUNCT = /[.,;:!?'"）)\]]+$/
 /** 裸版本号形态带上可能的前置包名，否则 `cordis 4.0.4` 只剩 `4.0.4`，会拿错对象去比对 */
@@ -85,6 +99,19 @@ const PACKAGE_RE = /`((?:@[a-z0-9._-]+\/)?[a-z][a-z0-9._-]{1,60}(?:@[~^]?\d[\w.-
 const ABSOLUTE_RE = /(绝对|必然|肯定|一定能|一定会|保证|百分之百|100%|不可能出错|万无一失|一定可以|稳赢|definitely|guaranteed|certainly|always works|impossible to fail|100%\s*works)/gi
 const NUMBER_RE = /\b\d+(?:[.,]\d+)?\s*(?:MB|GB|TB|KiB|MiB|GiB|ms|s|秒|分钟|小时|行|loc|tokens?|个\s?(?:文件|条目|问题)|%|％)(?![A-Za-z0-9])/gi
 const REVERSAL_RE = /(抱歉|对不起|我之前说错|我说错|更正一下|更正：|其实刚才|刚才那(?:个|条)(?:不对|有误)|我犯(?:了)?错|sorry,?\s+i\s+(?:was\s+)?wrong|apolog)/i
+
+/** 反引号里的东西远不是都是 npm 包：域名、文件名、路径都曾被当包名去 registry 查 */
+const FILE_EXT_RE = /\.(json5?|ya?ml|toml|txt|md|py|js|mjs|cjs|ts|tsx|jsx|bat|cmd|exe|dll|so|dylib|gguf|log|lock|bak\d*|csv|ini|cfg|sh|ps1|patch|diff|html|css|svg|png|jpg|zip|tar|gz|xz)$/i
+const DOMAIN_RE = /\.(com|net|org|cn|io|dev|app|edu|gov|mil|xyz|top|cc|tv|me|co|jp|kr|de|fr|ru|ir|uk|us|info|biz|ai|sh|link|cloud)$/i
+function isPlausiblePackageName(token: string): boolean {
+  const name = token.split('@').filter(Boolean)[0] ?? token
+  if (!name) return false
+  if (token.includes('://') || token.includes('\\')) return false
+  if (FILE_EXT_RE.test(token) || DOMAIN_RE.test(name)) return false
+  if (/[A-Z]/.test(name)) return false
+  if (/^\d/.test(name)) return false
+  return true
+}
 
 const DETECTORS: DetectorSpec[] = [
   {
@@ -115,7 +142,7 @@ const DETECTORS: DetectorSpec[] = [
     kind: 'package',
     weight: 2,
     hint: '确认包名与版本可安装（查 registry 或本地 node_modules）',
-    find: (text) => [...new Set([...text.matchAll(PACKAGE_RE)].map((m) => m[1]))],
+    find: (text) => [...new Set([...text.matchAll(PACKAGE_RE)].map((m) => m[1]))].filter(isPlausiblePackageName),
   },
   {
     kind: 'number',

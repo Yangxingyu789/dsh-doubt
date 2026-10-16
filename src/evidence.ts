@@ -74,6 +74,18 @@ async function onlineSources(claim: Claim, cfg: DoubtConfig, net: NetState): Pro
 
 function localOracle(claim: Claim, cfg: DoubtConfig): OracleResult {
   const cwd = cfg.workspace
+  // claims.ts 是「这条断言本机能不能判」的唯一闸门：checks 为空就必须照实说无法核验，
+  // 绝不能在这里另起一套判定绕过它（评测实测：POSIX 路径守卫曾被这里绕过）
+  if (!claim.checks || claim.checks.length === 0) {
+    return {
+      kind: claim.kind,
+      claim: claim.text,
+      ok: false,
+      noEvidence: true,
+      sources: [],
+      detail: claim.unmechanizable ?? '该断言本机无法机械核验',
+    }
+  }
   switch (claim.kind) {
     case 'command': {
       const check = claim.checks.find((c) => c.kind === 'commandAvailability')

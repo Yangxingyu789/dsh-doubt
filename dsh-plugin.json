@@ -2,7 +2,7 @@
   "manifestVersion": "0.15",
   "id": "dsh-doubt",
   "name": "dsh-doubt",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "license": "MIT",
   "facets": {
     "host": {
@@ -55,7 +55,9 @@
         "transport": "in-process",
         "source": "dsh-doubt 插件本体",
         "publicPrefix": "",
-        "tools": ["verify_claims"]
+        "tools": [
+          "verify_claims"
+        ]
       }
     ]
   },

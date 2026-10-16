@@ -162,7 +162,7 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
     const scan = scanAnswer(extract.text, { detectors: cfg.detectors })
     if (scan.score < cfg.minScore) return
 
-    const claims = extractClaims(scan.findings, { executeAnswerCommands: cfg.executeAnswerCommands })
+    const claims = extractClaims(scan.findings, { executeAnswerCommands: cfg.executeAnswerCommands, text: extract.text })
     if (claims.length === 0) return
 
     const net = options.probe
@@ -190,8 +190,14 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
     }
 
     const mechanical = evidence.filter((e) => e.verdict !== 'unverifiable')
-    if (actionable.length === 0) {
-      log(`dsh-doubt：turn ${turn} 的 ${evidence.length} 条断言全部核实通过，不打扰`)
+    // 插话闸门（评测实测：旧规则「非 confirmed 就说话」= 152/152 全插话，纯噪音）。
+    // 只有**正面反驳**或**独立重推导不一致**才值得打断；单纯「核验不了」不打扰。
+    const hard = evidence.filter((e) => e.verdict === 'refuted' || (e.verdict === 'inconclusive' && e.contradicting > 0))
+    const disagreed = Object.values(factored).some((f) => f.available && f.majority === null)
+    if (hard.length === 0 && !disagreed) {
+      const ok = evidence.filter((e) => e.verdict === 'confirmed').length
+      const unk = evidence.filter((e) => e.verdict === 'unverifiable').length
+      log(`dsh-doubt：turn ${turn} ${evidence.length} 条断言（证实 ${ok}／无法核验 ${unk}），没有正面反驳，不打扰`)
       entry.handledTurn = turn
       return
     }
@@ -203,7 +209,7 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
       text = buildRecheckText(claims, scan.score, lang, cfg.maxFindings)
     } else {
       text = buildEvidenceText({
-        evidence,
+        evidence: hard.concat(mechanical.filter((e) => e.verdict === 'inconclusive' && e.contradicting === 0)),
         factored: Object.keys(factored).length > 0 ? factored : undefined,
         strictLabeling: cfg.strictLabeling,
         requireSources: cfg.requireSources,

@@ -16,7 +16,7 @@ import { promptSection } from './prompts.js'
 import { buildVerifyTool } from './tool.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.2.0'
+export const version = '0.3.0'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'

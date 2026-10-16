@@ -1,6 +1,6 @@
 {
   "name": "dsh-doubt",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "分层取证替代「你确定吗」：插件每轮结束自己跑本机确定性 oracle 与多来源交叉，把实测证据注入下一轮；离线时用无草稿上下文的独立重推导+多数投票；附 verify_claims 取证工具。",
   "type": "module",
   "main": "lib/index.js",

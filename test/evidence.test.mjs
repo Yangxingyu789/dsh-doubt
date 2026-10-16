@@ -63,10 +63,15 @@ assert.equal(pathEv.verdict, 'confirmed', '真实存在的路径应被离线证�
 assert.ok(pathEv.provenance.length >= 1 && pathEv.provenance[0].startsWith('✓'), 'provenance 应带 ✓ 与来源标签')
 
 const bogus = await gatherEvidence(
-  extractClaims(scanAnswer('路径 E:\\这个路径一定不存在-zz\\a\\b.yaml 和包 `this-pkg-does-not-exist-xyz` 都在。', {}).findings, {}),
+  extractClaims(scanAnswer('路径 E:\\zz-definitely-missing\\a\\b.yaml 和包 `this-pkg-does-not-exist-xyz` 都在。', {}).findings, {}),
   cfg,
   { online: false, probedAt: Date.now(), latencyMs: 0 },
 )
-assert.ok(bogus.some((e) => e.verdict === 'refuted'), '不存在的路径/包应被离线证伪')
+// 文件系统能**正面**说「不存在」→ 证伪成立
+const bogusPath = bogus.find((e) => e.kind === 'path')
+assert.equal(bogusPath?.verdict, 'refuted', `本机不存在的路径应被证伪：${bogusPath?.verdict}`)
+// 本机没装这个包 ≠ 回答错了（可能只是提到它，或说的是别的仓库/机器）→ 不得反驳
+const bogusPkg = bogus.find((e) => e.kind === 'package')
+assert.equal(bogusPkg?.verdict, 'unverifiable', `离线时「本机没这个包」不得算证伪：${bogusPkg?.verdict} / ${bogusPkg?.note ?? ''}`)
 
 console.log(`evidence.test OK（判定规则 + 安全翻译 + 离线取证端到端；样例 ${ev.length} 条）`)
