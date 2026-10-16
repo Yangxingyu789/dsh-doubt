@@ -2,7 +2,7 @@
   "manifestVersion": "0.15",
   "id": "dsh-doubt",
   "name": "dsh-doubt",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "license": "MIT",
   "facets": {
     "host": {
@@ -27,14 +27,19 @@
     {
       "name": "dsh-doubt.fs.read",
       "scope": "filesystem-read",
-      "reason": "fileExists / fileMatch 检查需要读取被断言的文件。"
+      "reason": "fileExists / fileMatch 检查与本机 oracle（node_modules、package.json、锁文件、符号定义）需要读取文件。"
+    },
+    {
+      "name": "dsh-doubt.net.fetch",
+      "scope": "network",
+      "reason": "联网时向多个独立 registry 来源交叉核对包与版本；离线探测本身不传输任何用户内容。"
     }
   ],
   "contributes": {
     "x-display": [
       {
         "title": "dsh-doubt",
-        "description": "自动复核：扫描回答里未取证的断言并追加复核轮，附带 verify_claims 取证工具。"
+        "description": "分层取证：插件每轮结束自己跑本机 oracle 与多来源交叉，把实测证据注入下一轮；附带 verify_claims 取证工具。"
       }
     ],
     "x-prompt-sections": [

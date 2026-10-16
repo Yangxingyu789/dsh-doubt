@@ -1,4 +1,5 @@
-import type { Finding } from './scanner.js'
+import type { Evidence } from './evidence.js'
+import type { FactoredOutcome } from './factored.js'
 
 export type Lang = 'zh' | 'en'
 
@@ -8,67 +9,157 @@ export function detectLanguage(text: string, preferred: 'auto' | Lang = 'auto'):
   return /[\u3400-\u9fff]/.test(text) ? 'zh' : 'en'
 }
 
-const RULES: Record<Lang, string[]> = {
-  zh: [
-    '逐条用工具取证：跑命令、读文件、查 registry 或类型定义，不要凭记忆复述。',
-    '取证后给出**修正版结论**；被推翻的部分明确写「之前错了：……」，不要悄悄改。',
-    '确实无法核验的断言，标注「未验证」并说明为什么无法核验。',
-    '全部处理完就正常结束本轮，不要重复粘贴原答案。',
-  ],
-  en: [
-    'Verify each item with tools: run the command, read the file, check the registry or type definitions. Do not answer from memory.',
-    'Then give a **corrected conclusion**; for anything refuted, state explicitly "earlier I was wrong: …" instead of silently changing it.',
-    'If an assertion genuinely cannot be verified, mark it "unverified" and say why.',
-    'Finish the turn normally once every item is handled; do not re-paste the original answer.',
-  ],
+const VERDICT_LABEL: Record<Lang, Record<Evidence['verdict'], string>> = {
+  zh: { confirmed: '已证实', refuted: '已证伪', inconclusive: '证据冲突', unverifiable: '无法核验' },
+  en: { confirmed: 'confirmed', refuted: 'refuted', inconclusive: 'conflicting', unverifiable: 'unverifiable' },
 }
 
-const HEADER: Record<Lang, string> = {
-  zh: '[dsh-doubt 自动复核] 你上一轮回答里有',
-  en: '[dsh-doubt auto-recheck] Your previous answer contained',
+export interface EvidenceSectionInput {
+  evidence: readonly Evidence[]
+  factored?: Readonly<Record<string, FactoredOutcome>>
+  strictLabeling: boolean
+  requireSources: number
+  online: boolean
 }
 
-const FOOTER: Record<Lang, string> = {
-  zh: '如果某条断言你已经有证据（只是没贴出来），直接贴证据即可。',
-  en: 'If you already have evidence for an item and just omitted it, paste the evidence directly.',
+/**
+ * 注入的是**插件已经实测到的证据**，不是「请你去核验」。
+ * 这是把 intrinsic self-correction（文献里会变差）换成 external feedback（文献里有效）的关键。
+ */
+export function buildEvidenceText(input: EvidenceSectionInput, lang: Lang): string {
+  const { evidence, factored, strictLabeling, requireSources, online } = input
+  const L = VERDICT_LABEL[lang]
+
+  const refuted = evidence.filter((e) => e.verdict === 'refuted')
+  const conflicting = evidence.filter((e) => e.verdict === 'inconclusive')
+  const unverifiable = evidence.filter((e) => e.verdict === 'unverifiable')
+  const confirmed = evidence.filter((e) => e.verdict === 'confirmed')
+
+  const block = (items: readonly Evidence[]): string =>
+    items.map((e) => {
+      const lines = [`${L[e.verdict]} · (${e.kind}) ${e.claim}`]
+      for (const p of e.provenance) lines.push(`   ${p}`)
+      if (e.note) lines.push(`   ! ${e.note}`)
+      const f = factored?.[e.claimId]
+      if (f && f.available) {
+        lines.push(f.majority
+          ? `   ~ 独立重推导 ${f.agree}/${f.total} 一致：${f.majority}`
+          : `   ~ 独立重推导${f.reason ? ` ${f.reason}` : '（无多数）'}`)
+      }
+      return lines.join('\n')
+    }).join('\n\n')
+
+  const parts: string[] = []
+  const net = online
+    ? lang === 'zh' ? `联网可用：confirmed 需 ≥${requireSources} 个独立来源一致` : `online: confirmed requires ≥${requireSources} independent agreeing sources`
+    : lang === 'zh' ? '离线：只用本机确定性来源（文件系统 / node_modules / PATH / 锁文件）' : 'offline: deterministic local sources only (filesystem / node_modules / PATH / lockfiles)'
+
+  if (refuted.length > 0) {
+    parts.push(lang === 'zh'
+      ? `以下断言已被**实测证伪**（不是我的猜测，是执行结果）：\n\n${block(refuted)}`
+      : `The following assertions were **refuted by actual execution** (not a guess):\n\n${block(refuted)}`)
+  }
+  if (conflicting.length > 0) {
+    parts.push(lang === 'zh'
+      ? `以下断言的取证结果**互相冲突**，需要你再取一次证：\n\n${block(conflicting)}`
+      : `Evidence for these assertions **conflicts**; verify once more:\n\n${block(conflicting)}`)
+  }
+  if (unverifiable.length > 0) {
+    parts.push(lang === 'zh'
+      ? `以下断言本机与网络都**拿不出判据**：\n\n${block(unverifiable)}`
+      : `No judge is available locally or online for these assertions:\n\n${block(unverifiable)}`)
+  }
+  if (confirmed.length > 0) {
+    parts.push(lang === 'zh'
+      ? `以下断言已核实无误，无需改动：\n${confirmed.map((e) => `- (${e.kind}) ${e.claim}`).join('\n')}`
+      : `These assertions check out, no change needed:\n${confirmed.map((e) => `- (${e.kind}) ${e.claim}`).join('\n')}`)
+  }
+
+  const rules = lang === 'zh'
+    ? [
+        '对已证伪的条目，明确写出「之前错了：X → 正确的是 Y」并给出上面的实测输出，不要静默改写。',
+        '对证据冲突的条目，再取一次证；说明每个来源分别说了什么。',
+        unverifiable.length > 0 || strictLabeling
+          ? '无法核验的断言，在最终回答里逐条标注「未验证」并说明为什么无法核验——不许用「应该」「大概」代替证据。'
+          : '',
+        '不要重复粘贴原答案；只给修正后的结论与证据。',
+      ].filter(Boolean)
+    : [
+        'For refuted items, write "earlier I was wrong: X → correct is Y" and cite the measured output above; never silently rewrite.',
+        'For conflicting items, verify once more and state what each source said.',
+        unverifiable.length > 0 || strictLabeling
+          ? 'Mark unverifiable assertions "unverified" one by one and say why; do not substitute "probably" for evidence.'
+          : '',
+        'Do not re-paste the original answer; give only the corrected conclusion with evidence.',
+      ].filter(Boolean)
+
+  return [
+    lang === 'zh' ? `[dsh-doubt 取证结果] ${net}` : `[dsh-doubt evidence] ${net}`,
+    '',
+    ...parts,
+    '',
+    lang === 'zh' ? '要求：' : 'Requirements:',
+    ...rules.map((r, i) => `${i + 1}. ${r}`),
+  ].join('\n')
 }
 
-/** 自动复核轮要注入给模型的文本 */
+/** 兜底：完全无法机械核验时，才退化成让模型自己取证的一轮 */
 export function buildRecheckText(
-  findings: readonly Finding[],
+  claims: readonly { kind: string; text: string; unmechanizable?: string }[],
   score: number,
   lang: Lang,
   maxFindings: number,
 ): string {
-  const picked = findings.slice(0, maxFindings)
-  const lines = picked.map((f, i) => `${i + 1}. (${f.kind}) ${f.snippet}\n   → ${f.hint}`)
-  const rules = RULES[lang].map((r, i) => `${i + 1}. ${r}`).join('\n')
+  const picked = claims.slice(0, maxFindings)
+  const lines = picked.map((c, i) => `${i + 1}. (${c.kind}) ${c.text}${c.unmechanizable ? `\n   → ${c.unmechanizable}` : ''}`)
+  const rules = (lang === 'zh'
+    ? [
+        '逐条用工具取证：跑命令、读文件、查 registry 或类型定义，不要凭记忆复述。',
+        '取证后给出**修正版结论**；被推翻的部分明确写「之前错了：……」，不要悄悄改。',
+        '确实无法核验的断言，标注「未验证」并说明为什么无法核验。',
+      ]
+    : [
+        'Verify each item with tools: run the command, read the file, check the registry or type definitions. Do not answer from memory.',
+        'Then give a **corrected conclusion**; for anything refuted, state explicitly "earlier I was wrong: …".',
+        'If an assertion genuinely cannot be verified, mark it "unverified" and say why.',
+      ]).map((r, i) => `${i + 1}. ${r}`).join('\n')
   const head = lang === 'zh'
-    ? `${HEADER.zh} ${picked.length} 条「可核验但没给证据」的断言（风险分 ${score}）：`
-    : `${HEADER.en} ${picked.length} verifiable assertion(s) with no evidence (risk score ${score}):`
-  const tail = lang === 'zh' ? '要求：' : 'Requirements:'
-  return `${head}\n${lines.join('\n')}\n\n${tail}\n${rules}\n\n${FOOTER[lang]}`
+    ? `[dsh-doubt] 本机无法自动核验 ${picked.length} 条断言（风险分 ${score}），需要你亲自取证：`
+    : `[dsh-doubt] ${picked.length} assertion(s) could not be checked automatically (risk score ${score}); verify them yourself:`
+  return `${head}\n${lines.join('\n')}\n\n${lang === 'zh' ? '要求：' : 'Requirements:'}\n${rules}`
 }
 
-/** 系统提示词里的一段使用指引（让模型知道有 verify_claims 可用） */
-export function promptSection(lang: Lang): string {
+/** 系统提示词段：说明分层取证策略与硬性禁令 */
+export function promptSection(lang: Lang, opts: { requireSources: number } = { requireSources: 2 }): string {
   return lang === 'zh'
-    ? `## 答案自检（dsh-doubt）
+    ? `## 分层取证（dsh-doubt）
 
-你有一个 \`verify_claims\` 工具：它会在本机**真实执行**你提交的检查（命令 / 文件 / HTTP / 表达式），并返回每条断言的实测结果。
+你有一个 \`verify_claims\` 工具：它会在本机**真实执行**你提交的检查（命令 / 文件 / HTTP / 表达式），返回实测结果。插件自身也会在每轮结束后自动取证并把结果贴给你。
 
-规则：
-- 给出命令、路径、版本号、包名、API 签名、具体数字之前，先用 \`verify_claims\` 取证，再在回答里引用实测输出。
-- 不确定就说不确定，并说明你核验到了哪一步；不要用「应该」「大概」「一般来说」掩盖没查过。
-- 不要为了显得可靠而使用「一定」「绝对」「100%」，除非有上面那种证据。
-- 被指出错误时，明确写出「之前错了：X → 正确的是 Y」，不要静默改写。`
-    : `## Answer self-check (dsh-doubt)
+取证优先级（严格按此顺序）：
+1. 本机确定性来源：执行结果、文件系统、\`node_modules\`、\`package.json\`、锁文件、\`PATH\`。
+2. 联网可用时：至少 ${opts.requireSources} 个**互相独立**的来源一致才算确认（例如两个 registry、官方文档 + 本地安装）。
+3. 离线且无本机判据时：把断言改写成自包含的小问题独立重推导多次，取多数；**不要**用「再想想你确定吗」这种方式——它会把对的改成错的。
 
-You have a \`verify_claims\` tool: it **actually executes** the checks you submit (command / file / HTTP / expression) on this machine and returns measured results for each assertion.
+硬性禁令：
+- 命令、路径、版本号、包名、API 签名、具体数字，没有实测证据就不要断言。
+- 编号、ID、哈希、URL、文件路径、API 名称一律不许凭记忆写；不确定就去查或明确标注「未核实」。
+- 不要用「一定」「绝对」「100%」，除非有上面的证据。
+- 被指出错误时写清「之前错了：X → 正确的是 Y」，不要静默改写。
+- 无法核验就标「未验证」，不要用「应该」「大概」「一般来说」掩盖没查过。`
+    : `## Tiered verification (dsh-doubt)
 
-Rules:
-- Before stating a command, path, version, package name, API signature, or specific number, verify it with \`verify_claims\` and cite the measured output.
-- If you are unsure, say so and state how far you verified; do not hide an unchecked guess behind "probably", "roughly", or "generally".
-- Do not use "definitely", "absolutely", or "100%" unless you have the kind of evidence above.
-- When corrected, write explicitly "earlier I was wrong: X → correct is Y"; never silently rewrite.`
+You have a \`verify_claims\` tool: it **actually executes** the checks you submit (command / file / HTTP / expression) and returns measured results. The plugin also verifies automatically after each turn and hands you the results.
+
+Evidence order (strict):
+1. Deterministic local sources: execution results, filesystem, \`node_modules\`, \`package.json\`, lockfiles, \`PATH\`.
+2. When online: require ${opts.requireSources} **independent** agreeing sources (e.g. two registries, official docs + local install).
+3. When offline with no local judge: rewrite the assertion into a self-contained question, re-derive it independently several times, and take the majority. Do **not** do "think again, are you sure?" — that flips correct answers into wrong ones.
+
+Hard rules:
+- Do not assert a command, path, version, package name, API signature, or number without measured evidence.
+- Never write identifiers, IDs, hashes, URLs, file paths, or API names from memory; look them up or label them "not verified".
+- Do not use "definitely", "absolutely", "100%" without the evidence above.
+- When corrected, write "earlier I was wrong: X → correct is Y"; never silently rewrite.
+- If it cannot be verified, mark it "unverified"; do not cover an unchecked guess with "probably" or "generally".`
 }

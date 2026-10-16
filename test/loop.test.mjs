@@ -49,8 +49,9 @@ listeners.forEach(([, h]) => h({ agent: a1, status: 'idle' }))
 await tick()
 assert.equal(a1.followups.length, 1, '应追加 1 轮复核')
 assert.equal(a1.followups[0].source.kind, 'dsh-doubt')
-assert.ok(a1.followups[0].content[0].text.includes('复核'), '注入文本应包含复核字样')
-assert.ok(a1.followups[0].content[0].text.includes('command'), '应列出 command 类断言')
+assert.ok(a1.followups[0].content[0].text.includes('取证结果'), '注入文本应是插件的实测取证结果')
+assert.ok(a1.followups[0].content[0].text.includes('已证伪'), '不存在的路径应被实测证伪')
+assert.ok(a1.followups[0].content[0].text.includes('无法核验'), '含 && 的命令应标为无法机械核验')
 
 // 2) 同一个 turn 不重复触发
 listeners.forEach(([, h]) => h({ agent: a1, status: 'idle' }))

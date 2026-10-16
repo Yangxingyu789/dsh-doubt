@@ -6,7 +6,21 @@
     enabled: true
     verifyTool: true
     promptSection: true
-    autoRecheck: true
+
+    # Tier A/B：插件自己取证，注入实测结果（不是要求模型「再检查一遍」）
+    autoVerify: true
+    requireSources: 2
+    onlineTimeoutMs: 8000
+
+    # Tier C：离线且无判据时，无草稿上下文独立重推导 + 多数投票
+    factored: true
+    factoredVotes: 3
+    factoredProvider: spawn-in-process
+
+    # 安全：默认不执行回答里出现的命令，只验证程序是否存在
+    executeAnswerCommands: false
+    strictLabeling: true
+
     maxRounds: 2
     minScore: 6
     maxFindings: 8

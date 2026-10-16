@@ -11,8 +11,12 @@
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import vm from 'node:vm'
+import { commandAvailability, packageVersion, symbolExists, versionClaim, type OracleResult } from './local.js'
 
-export type CheckKind = 'command' | 'fileExists' | 'fileMatch' | 'httpStatus' | 'expr' | 'textEquals'
+export type CheckKind =
+  | 'command' | 'fileExists' | 'fileMatch' | 'httpStatus' | 'expr' | 'textEquals'
+  /** 本机确定性 oracle（不执行任意命令，只查存在性/版本/符号） */
+  | 'commandAvailability' | 'packageVersion' | 'versionClaim' | 'symbolExists'
 
 export interface Check {
   kind: CheckKind
@@ -39,6 +43,10 @@ export interface Check {
   /** textEquals */
   actual?: string
   expected?: string
+  /** packageVersion / versionClaim：包名 */
+  name?: string
+  /** 本机 oracle 的查找起点，默认 process.cwd() */
+  cwd?: string
   /** 单条超时覆盖 */
   timeoutMs?: number
 }
@@ -204,7 +212,13 @@ function runTextEquals(check: Check): CheckOutcome {
   return { ok, kind: 'textEquals', claim: check.claim, detail: ok ? '一致' : `不一致\nactual:   ${clip(actual)}\nexpected: ${clip(expected)}` }
 }
 
+/** 本机 oracle 结果 → 统一判定（detail 里带来源标签） */
+function oracleOutcome(r: OracleResult): CheckOutcome {
+  return { ok: r.ok, kind: r.kind, claim: r.claim, detail: r.noEvidence && !r.detail ? '本机没有可比的来源' : r.detail }
+}
+
 export async function runCheck(check: Check, opts: RunOptions): Promise<CheckOutcome> {
+  const cwd = String(check.cwd ?? opts.cwd ?? process.cwd())
   switch (check.kind) {
     case 'command': return runCommand(check, opts)
     case 'fileExists': return runFileExists(check)
@@ -212,6 +226,10 @@ export async function runCheck(check: Check, opts: RunOptions): Promise<CheckOut
     case 'httpStatus': return runHttp(check)
     case 'expr': return runExpr(check, opts)
     case 'textEquals': return runTextEquals(check)
+    case 'commandAvailability': return oracleOutcome(commandAvailability(String(check.claim ?? check.argv?.join(' ') ?? ''), check.argv ?? []))
+    case 'packageVersion': return oracleOutcome(packageVersion(String(check.claim ?? check.name ?? ''), String(check.name ?? ''), cwd))
+    case 'versionClaim': return oracleOutcome(versionClaim(String(check.claim ?? check.expected ?? ''), cwd, check.name))
+    case 'symbolExists': return oracleOutcome(symbolExists(String(check.claim ?? check.source ?? ''), cwd))
     default: return { ok: false, kind: String(check?.kind ?? 'unknown'), claim: check?.claim, detail: `未知 check.kind：${String(check?.kind)}` }
   }
 }

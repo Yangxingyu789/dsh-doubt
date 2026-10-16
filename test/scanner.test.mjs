@@ -37,6 +37,21 @@ assert.equal(capped.findings.filter((f) => f.kind === 'package').length, 3, 'pac
 const reversal = scanAnswer('抱歉，我之前说错了，正确做法是换个参数。')
 assert.ok(reversal.findings.some((f) => f.kind === 'reversal'), '应检出改口')
 
+// 路径后面的句读不能被吞进路径（否则真存在的路径会被误判为不存在）
+const punct = scanAnswer('配置在 E:\\a\\b.json。日志在 /var/log/app.log，还有 E:\\c\\d.txt、')
+const paths = punct.findings.filter((f) => f.kind === 'path').map((f) => f.snippet)
+assert.ok(paths.includes('E:\\a\\b.json'), `应剥掉尾部句号，实际：${JSON.stringify(paths)}`)
+assert.ok(paths.includes('/var/log/app.log'), `应剥掉尾部逗号，实际：${JSON.stringify(paths)}`)
+assert.ok(paths.includes('E:\\c\\d.txt'), `应剥掉尾部顿号，实际：${JSON.stringify(paths)}`)
+
+// 裸编号（arXiv ID 这类）也要被抓出来当版本类断言核验——我本人就凭记忆写错过两个
+const bare = scanAnswer('参考 arXiv 2402.06380 这篇论文')
+assert.ok(bare.findings.some((f) => f.kind === 'version' && f.snippet === '2402.06380'), `应抓到裸编号，实际：${JSON.stringify(bare.findings.map((f) => f.snippet))}`)
+// 带包名的裸版本号要连包名一起抓，否则会拿错对象比对（假证伪）
+const named = scanAnswer('依赖 cordis 4.0.4 和 typescript 9.9.9')
+const verSnips = named.findings.filter((f) => f.kind === 'version').map((f) => f.snippet)
+assert.ok(verSnips.some((s) => s.includes('cordis') && s.includes('4.0.4')), `版本断言应带包名，实际：${JSON.stringify(verSnips)}`)
+
 // 会话事件抽取
 const events = [
   { type: 'turn/end', data: { turn: 3 } },

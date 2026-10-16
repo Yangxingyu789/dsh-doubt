@@ -12,15 +12,39 @@ export interface DoubtConfig {
   verifyTool: boolean
   /** 注入一段使用指引到系统提示词 */
   promptSection: boolean
-  /** 自动复核循环：turn 结束后自动追加一轮取证 */
-  autoRecheck: boolean
-  /** 每个 session 自动复核的轮数上限（人工发新消息即重置） */
+
+  /** Tier A/B：turn 结束后插件**自己**取证并把实测结果注入，而不是请求模型去取证 */
+  autoVerify: boolean
+  /** 在线时 confirmed 需要几个互相独立的来源一致 */
+  requireSources: number
+  /** 联网探测候选 URL */
+  probeUrls: string[]
+  /** registry 候选（多来源交叉用） */
+  registryUrls: string[]
+  /** 在线请求超时 */
+  onlineTimeoutMs: number
+
+  /** Tier C：无草稿上下文的独立重推导 + 多数投票（离线时的「多次检查」） */
+  factored: boolean
+  /** 投票次数（self-consistency 的采样数） */
+  factoredVotes: number
+  /** subagent provider 名；探测失败会自动跳过 */
+  factoredProvider: string
+
+  /** 是否真的执行回答里出现的命令（默认只验证程序是否存在） */
+  executeAnswerCommands: boolean
+  /** 无法核验的断言必须在最终回答里显式标注「未验证」 */
+  strictLabeling: boolean
+  /** 本机查找 node_modules / package.json 的起点 */
+  workspace: string
+
+  /** 自动注入的轮数上限（人工发新消息即重置） */
   maxRounds: number
-  /** 风险分达到该阈值才触发复核 */
+  /** 风险分达到该阈值才触发 */
   minScore: number
-  /** 复核消息里最多列出多少条断言 */
+  /** 注入消息里最多列出多少条断言 */
   maxFindings: number
-  /** 短于该字符数的回答不触发（避免一句话也被拦） */
+  /** 短于该字符数的回答不触发 */
   minAnswerChars: number
   /** 单个检测器开关 */
   detectors: Record<string, boolean>
@@ -38,32 +62,39 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   enabled: true,
   verifyTool: true,
   promptSection: true,
-  autoRecheck: true,
+
+  autoVerify: true,
+  requireSources: 2,
+  probeUrls: [
+    'https://registry.npmmirror.com/-/ping',
+    'https://registry.npmjs.org/-/ping',
+    'https://export.arxiv.org/api/query?max_results=1',
+  ],
+  registryUrls: ['https://registry.npmmirror.com', 'https://registry.npmjs.org'],
+  onlineTimeoutMs: 8_000,
+
+  factored: true,
+  factoredVotes: 3,
+  factoredProvider: 'spawn-in-process',
+
+  executeAnswerCommands: false,
+  strictLabeling: true,
+  workspace: process.cwd(),
+
   maxRounds: 2,
   minScore: 6,
   maxFindings: 8,
   minAnswerChars: 240,
   detectors: {},
   verificationTools: [
-    'bash',
-    'pwsh',
-    'ops_bash',
-    'ops_pwsh',
-    'ops_run_background',
-    'read',
-    'ops_inspect_local_file',
-    'grep',
-    'ops_grep',
-    'glob',
-    'ops_glob',
-    'web_search',
-    'web_fetch',
-    'verify_claims',
+    'bash', 'pwsh', 'ops_bash', 'ops_pwsh', 'ops_run_background',
+    'read', 'ops_inspect_local_file', 'grep', 'ops_grep', 'glob', 'ops_glob',
+    'web_search', 'web_fetch', 'verify_claims',
   ],
   denyBinaries: [
     'rm', 'del', 'erase', 'format', 'diskpart', 'mkfs', 'dd',
     'shutdown', 'reboot', 'reg', 'schtasks', 'netsh', 'cipher',
-    'vssadmin', 'wevtutil', 'rmdir', 'erase',
+    'vssadmin', 'wevtutil', 'rmdir',
   ],
   timeoutMs: 15_000,
   language: 'auto',
@@ -106,7 +137,23 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
     enabled: bool(src.enabled, d.enabled),
     verifyTool: bool(src.verifyTool, d.verifyTool),
     promptSection: bool(src.promptSection, d.promptSection),
-    autoRecheck: bool(src.autoRecheck, d.autoRecheck) && maxRounds > 0,
+
+    autoVerify: bool(src.autoVerify, d.autoVerify),
+    requireSources: clampInt(src.requireSources, 1, 5, d.requireSources),
+    probeUrls: strings(src.probeUrls, d.probeUrls),
+    registryUrls: strings(src.registryUrls, d.registryUrls),
+    onlineTimeoutMs: clampInt(src.onlineTimeoutMs, 500, 60_000, d.onlineTimeoutMs),
+
+    factored: bool(src.factored, d.factored),
+    factoredVotes: clampInt(src.factoredVotes, 1, 7, d.factoredVotes),
+    factoredProvider: typeof src.factoredProvider === 'string' && src.factoredProvider.trim()
+      ? src.factoredProvider.trim()
+      : d.factoredProvider,
+
+    executeAnswerCommands: bool(src.executeAnswerCommands, d.executeAnswerCommands),
+    strictLabeling: bool(src.strictLabeling, d.strictLabeling),
+    workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
+
     maxRounds,
     minScore: clampInt(src.minScore, 1, 100, d.minScore),
     maxFindings: clampInt(src.maxFindings, 1, 30, d.maxFindings),

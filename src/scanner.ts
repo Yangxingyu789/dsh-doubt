@@ -73,8 +73,13 @@ function commandLines(text: string): string[] {
   return out
 }
 
-const PATH_RE = /(?:[A-Za-z]:[\\/][^\s`'"<>()|]+)|(?:~?\/(?:[\w.@-]+\/){1,}[\w.@-]+)/g
-const VERSION_RE = /(?:[vV]ersion|版本)\s*[:：]?\s*\d+(?:\.\d+){1,3}|[vV]\d+(?:\.\d+){1,3}|\^\s?\d+\.\d+\.\d+|~\d+\.\d+\.\d+/g
+/** 路径字符类必须排除 CJK 与全角标点，否则 `E:\a\b.json。日志在` 会把整段中文吞进路径 */
+const NOT_IN_PATH = String.raw`^\s` + '`' + String.raw`'"<>()|、。，；：！？` + String.raw`\u3000-\u303f\u4e00-\u9fff\uff00-\uffef`
+const PATH_RE = new RegExp(`(?:[A-Za-z]:[/\\\\][${NOT_IN_PATH}]+)|(?:~?\\/(?:[\\w.@-]+\\/){1,}[\\w.@-]+)`, 'g')
+/** 路径后面紧跟的半角句读会被误吞（`E:\a\b.json.`），必须剥掉 */
+const TRAILING_PUNCT = /[.,;:!?'"）)\]]+$/
+/** 裸版本号形态带上可能的前置包名，否则 `cordis 4.0.4` 只剩 `4.0.4`，会拿错对象去比对 */
+const VERSION_RE = /(?:[vV]ersion|版本)\s*[:：]?\s*\d+(?:\.\d+){1,3}|[vV]\d+(?:\.\d+){1,3}|\^\s?\d+\.\d+\.\d+|~\d+\.\d+\.\d+|(?:[A-Za-z@][\w@/.-]*\s+)?\d+\.\d+\.\d+(?:[-+][\w.]+)?|\b\d{3,}\.\d{3,}\b/g
 const SYMBOL_RE = /`([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*){0,4}\([^`)]{0,60}\))`/g
 const PACKAGE_RE = /`((?:@[a-z0-9._-]+\/)?[a-z][a-z0-9._-]{1,60}(?:@[~^]?\d[\w.-]*)?)`/g
 const ABSOLUTE_RE = /(绝对|必然|肯定|一定能|一定会|保证|百分之百|100%|不可能出错|万无一失|一定可以|稳赢|definitely|guaranteed|certainly|always works|impossible to fail|100%\s*works)/gi
@@ -92,7 +97,7 @@ const DETECTORS: DetectorSpec[] = [
     kind: 'path',
     weight: 1,
     hint: '确认该路径存在（列目录或读文件），不存在就改掉',
-    find: (text) => [...new Set(text.match(PATH_RE) ?? [])],
+    find: (text) => [...new Set((text.match(PATH_RE) ?? []).map((p) => p.replace(TRAILING_PUNCT, '')).filter(Boolean))],
   },
   {
     kind: 'version',

@@ -1,151 +1,168 @@
 # dsh-doubt
 
-**把「你确定吗」变成 DSH 的自动动作。**
+**用分层取证替代「你确定吗」。**
 
-模型第一遍回答经常不严谨：命令没跑过、路径没确认、版本号是记忆的、API 签名是编的。
-你只能反复追问「你确定吗」——它每次去查都能查出问题，于是一个可靠结论要问好几次。
+模型第一遍回答经常不严谨：命令没跑过、路径没确认、版本号是记忆的、API 签名是编的。你只能反复追问「你确定吗」——它每次真去查都能查出问题，于是一个可靠结论要问好几次。
 
-`dsh-doubt` 把这一遍追问自动化：**回答里凡是能被外部证据核验、却没给证据的断言，插件自己发现、自己追加复核轮，并给它一个真实执行取证的工具。**
+`dsh-doubt` 把这件事自动化，但**不是**让模型「再想想」：每轮结束后，**插件自己**用本机确定性来源和（联网时的）多来源交叉去核验回答里的断言，然后把**实测证据**注入下一轮。
 
 中文 | [English](README.md)
 
 ---
 
-## 它做三件事
+## 为什么不做成「追问一遍」
+
+这是 v0.1 → v0.2 的关键改动，依据是实测数据而不是直觉：
+
+| 做法 | 实测结果 | 出处 |
+|---|---|---|
+| 内在自纠错（只让它再看一遍，无外部反馈） | GPT-4 GSM8K **95.5 → 89.0**；Llama-2 **62.0 → 36.5**；CommonSenseQA 75.8 → 38.1 | [Large Language Models Cannot Self-Correct Reasoning Yet, ICLR 2024](https://arxiv.org/abs/2310.01798) |
+| 同上，机制分析 | GSM8K 上 74.7% 保持原答案；改动案例里**把对的改成错的**多于把错的改成对的 | 同上 §3.3 |
+| 外部反馈纠错（工具/代码执行器/标签） | 一致提升；作者明确建议「用工具当 verifier」 | [CRITIC, ICLR 2024](https://arxiv.org/abs/2305.11738) |
+| 核验问题**独立回答**（不看自己的草稿） | 幻觉显著下降；若能看到草稿会复制同一幻觉 | [Chain-of-Verification](https://arxiv.org/abs/2309.11495) |
+| yes/no 式核验提问 | 模型倾向**不管对错都表示同意** | 同上 |
+| 独立重推导 + 多数投票 | 76.7 → 82.5 → 85.3 → 88.2（随采样数上升），同等成本下优于多智能体辩论 | [2310.01798 §4](https://arxiv.org/abs/2310.01798) |
+
+结论：**「你确定吗」是有害的多次检查；「换个独立上下文重推导一遍并投票」是有效的多次检查。** 本插件只做后者。
+
+---
+
+## 分层取证
 
 ```
-                    ┌──────────────────────────────────────────┐
-   模型回答 ───────►│ 1. 风险扫描器（纯函数，9 个检测器）        │
-                    │    命令 / 路径 / 版本 / API 符号 / 包名 /  │
-                    │    数字 / 代码块 / 绝对化措辞 / 改口       │
-                    └───────────────┬──────────────────────────┘
-                                    │ 风险分 ≥ 阈值 且 本轮没调用过取证工具
+                     ┌──────────────────────────────────────────────┐
+   模型回答 ────────►│ 风险扫描器（纯函数，9 检测器）                 │
+                     │ 命令/路径/版本/API 符号/包名/数字/代码块/      │
+                     │ 绝对化措辞/改口                               │
+                     └──────────────────┬───────────────────────────┘
+                                        │ 断言 → 可机械执行的检查
+                                        ▼
+        ┌───────────────────────────────────────────────────────────┐
+        │ Tier A 本机确定性 oracle（离线可用，机器当裁判）           │
+        │   PATH/PATHEXT 查找 · node_modules 安装版本 ·             │
+        │   package.json 声明范围 · 锁文件 · 定义位置符号查找        │
+        ├───────────────────────────────────────────────────────────┤
+        │ Tier B 多来源交叉（联网时）                                │
+        │   ≥requireSources 个**互相独立**来源一致才算 confirmed     │
+        │   例：npmmirror + npmjs 两个 registry 都说 5.9.3 存在      │
+        ├───────────────────────────────────────────────────────────┤
+        │ Tier C 独立重推导 + 多数投票（离线且无判据时）             │
+        │   把断言改写成自包含提问 → 无草稿上下文的子代理答 N 次      │
+        │   → 取多数；分裂就如实说「投票分裂」，不硬给结论           │
+        └───────────────────────────┬───────────────────────────────┘
                                     ▼
-                    ┌──────────────────────────────────────────┐
-                    │ 2. 自动追加一轮复核（agent.followup）      │
-                    │    「这 6 条断言没有证据，逐条取证后      │
-                    │      给修正版结论；错了就明说之前错了」    │
-                    └───────────────┬──────────────────────────┘
-                                    │ 模型需要真实证据
-                                    ▼
-                    ┌──────────────────────────────────────────┐
-                    │ 3. verify_claims 工具：本机真跑            │
-                    │    command / fileExists / fileMatch /     │
-                    │    httpStatus / expr / textEquals         │
-                    │    → 退出码、实测输出、判定理由            │
-                    └──────────────────────────────────────────┘
+                     ┌──────────────────────────────────────────────┐
+                     │ 注入的是**实测证据 + 判定**，不是「请去核验」 │
+                     │ 已证伪 / 证据冲突 / 无法核验 / 已证实         │
+                     │ 每条带来源标签：✓ [node_modules/x] 已安装 …  │
+                     └──────────────────────────────────────────────┘
 ```
 
-第 3 件是核心：**不靠「让另一个模型怀疑它」，靠外部执行**。内省不可靠，跑一遍的结果可靠。
+判定只有四种，**没有「大概对」**：
+
+- `confirmed` 达到来源数要求
+- `refuted` 有来源明确反驳且无来源支持
+- `inconclusive` 来源冲突 / 在线时一致来源不足 / 只有弱证据
+- `unverifiable` 本机与网络都拿不出判据 —— 必须如实标注，不许猜
+
+**弱证据模型**：标识符只在调用位置出现、不在定义位置出现 → 中性（既不确认也不反驳）。这是实测出来的必要性：早期版本把「测试文件里那句断言本身」当成了证据，自指假阳性。
 
 ---
 
 ## 安装
 
-### 方式一：插件市场
-
-在 DSH 的插件管理里搜 `dsh-doubt`。
-
-### 方式二：命令行
-
 ```bash
 dsh plugin --profile desktop add dsh-doubt
 ```
 
-### 方式三：离线目录安装（不联网）
+离线（不联网）：
 
 ```powershell
 git clone https://github.com/YOUR_NAME/dsh-doubt.git
 cd dsh-doubt
-pnpm install --offline        # 或联网 pnpm install
+pnpm install --offline
 node scripts/install-local.mjs --dry     # 先看会改什么
-node scripts/install-local.mjs           # 写入 %DSH_HOME%\plugins + profile/package.json
+node scripts/install-local.mjs
 cd $env:USERPROFILE\.dsh\profiles\desktop
 pnpm install --offline
 # 重启 DSH 宿主
 ```
 
-卸载：删掉 `profiles/<profile>/package.json` 里新增的 `dependencies["dsh-doubt"]` 和 `bundles` 末尾的 `"dsh-doubt"`，再 `pnpm install --offline`，重启。
-
 ---
 
 ## 配置
 
-在 `cordis.patch.yml`（profile 层，后加载优先）里覆盖：
-
-```yaml
-- id: dsh-doubt
-  name: "dsh-doubt"
-  config:
-    enabled: true
-    autoRecheck: true
-    maxRounds: 2
-    minScore: 6
-    minAnswerChars: 240
-    detectors:
-      number: false      # 关掉「具体数字」检测
-```
+在 profile 的 `cordis.patch.yml` 里加同 id 条目覆盖（后加载优先）：
 
 | 字段 | 默认 | 作用 |
 |---|---|---|
 | `enabled` | `true` | 总开关 |
 | `verifyTool` | `true` | 注册 `verify_claims` |
-| `promptSection` | `true` | 注入「先取证再断言」的提示词段 |
-| `autoRecheck` | `true` | 自动复核循环 |
-| `maxRounds` | `2` | 每个 session 自动复核轮数上限（人工发新消息即重置） |
-| `minScore` | `6` | 触发复核的风险分阈值，调高 = 更少打扰 |
-| `maxFindings` | `8` | 复核消息里最多列几条断言 |
-| `minAnswerChars` | `240` | 短于这个长度的回答不触发 |
-| `detectors` | `{}` | 单个检测器开关，`{"number": false}` 即关闭 |
-| `verificationTools` | 见下 | 本轮出现过这些工具调用就算「已取证」 |
-| `denyBinaries` | `rm/del/format/...` | `verify_claims` 拒绝执行的程序名 |
+| `promptSection` | `true` | 注入分层取证规则 + 硬性禁令 |
+| `autoVerify` | `true` | 插件自己跑 Tier A/B 并注入证据 |
+| `requireSources` | `2` | 在线时 confirmed 需要的独立一致来源数 |
+| `probeUrls` | 2 个 registry + arXiv | 联网探测候选 |
+| `registryUrls` | npmmirror, npmjs | Tier B 交叉来源 |
+| `onlineTimeoutMs` | `8000` | 在线请求超时 |
+| `factored` | `true` | 启用 Tier C |
+| `factoredVotes` | `3` | 独立重推导采样数 |
+| `factoredProvider` | `spawn-in-process` | 子代理 provider；不可用则自动跳过并如实报告 |
+| `executeAnswerCommands` | `false` | **默认不执行回答里出现的命令**，只验证程序是否存在 |
+| `strictLabeling` | `true` | 无法核验的断言必须在最终回答里标「未验证」 |
+| `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
+| `maxRounds` | `2` | 注入轮数上限（人工发新消息即重置） |
+| `minScore` | `6` | 触发阈值，调高 = 更少打扰 |
+| `maxFindings` | `8` | 最多列几条断言 |
+| `minAnswerChars` | `240` | 短回答不触发 |
+| `detectors` | `{}` | 单个检测器开关 |
+| `verificationTools` | 见源码 | 本轮出现过即视为已取证 |
+| `denyBinaries` | `rm/del/format/…` | `verify_claims` 拒绝执行的程序 |
 | `timeoutMs` | `15000` | 单条检查超时 |
-| `language` | `auto` | 注入文本语言（`auto` 按回答文本判断；提示词段用 `zh`，除非设成 `en`） |
+| `language` | `auto` | 注入文本语言 |
 
 ---
 
 ## 检测器
 
-| kind | 权重 | 抓什么 | 要求它做什么 |
+| kind | 权重 | 抓什么 | Tier A 怎么判 |
 |---|---|---|---|
-| `command` | 2 | shell 代码块里的命令行 | 真跑一遍，贴退出码与输出 |
-| `path` | 1 | `E:\...` / `/a/b/c` 路径 | 确认存在，不存在就改 |
-| `version` | 2 | `v1.2.3`、`版本 4.0`、`^4.0.4` | 用 `package.json` / `--version` 核对 |
-| `symbol` | 2 | 反引号里的 `foo.bar()` 签名 | 读定义处或类型声明，别编 API |
-| `package` | 2 | 反引号里的包名 | 查 registry / 本地 `node_modules` |
-| `number` | 1 | `30 秒`、`12 MB`、`47%` | 给出测量方式，否则改成区间 |
-| `code` | 2 | 非 shell 代码块 | 编译/运行一次，贴真实结果 |
-| `absolute` | 2 | 「一定」「绝对」「100%」「guaranteed」 | 换成有出处的表述 |
-| `reversal` | 3 | 「抱歉我之前说错了」 | 把被推翻的结论连正确版本一起重新核验 |
+| `command` | 2 | shell 代码块里的命令行 | 程序是否在 PATH（默认不执行） |
+| `path` | 1 | `E:\...` / `/a/b/c` | `existsSync` |
+| `version` | 2 | `v1.2.3`、`^4.0.4` | node_modules 实际版本 + package.json 范围 + 锁文件 |
+| `symbol` | 2 | 反引号里的 `foo.bar()` | 在依赖/源码里找**定义位置** |
+| `package` | 2 | 反引号里的包名 | node_modules 是否安装 + 联网 registry |
+| `number` | 1 | `30 秒`、`12 MB` | 无机械判据 → `unverifiable` |
+| `code` | 2 | 非 shell 代码块 | 同上 |
+| `absolute` | 2 | 「一定」「绝对」「100%」 | 同上（靠提示词段约束） |
+| `reversal` | 3 | 「抱歉我之前说错了」 | 把被推翻的结论重新核验 |
 
-分数 = 各类命中权重之和，**每类默认最多计 3 条**——所以长回答不会必然触发，短促的「好的收到」也不会被打扰。
+分数 = 各类命中权重之和，**每类默认最多计 3 条**。
 
 ---
 
-## `verify_claims` 长什么样
+## `verify_claims`
 
-模型提交：
+模型（或你）提交检查，插件真跑。除通用检查外还暴露四个本机 oracle，可直接调：
 
 ```json
 {
   "checks": [
     { "kind": "command", "claim": "pnpm install --offline 能离线装依赖",
       "argv": ["pnpm", "install", "--offline"], "expectMatch": "downloaded 0" },
-    { "kind": "fileExists", "claim": "patch 文件在 profile 根目录",
-      "path": "C:\\Users\\me\\.dsh\\profiles\\desktop\\cordis.patch.yml" },
-    { "kind": "expr", "source": "21 * 2", "expectMatch": "42" }
+    { "kind": "packageVersion", "name": "typescript", "claim": "装了 typescript" },
+    { "kind": "versionClaim", "claim": "typescript 9.9.9", "name": "typescript" },
+    { "kind": "symbolExists", "claim": "normalizeConfig(raw)" }
   ]
 }
 ```
 
-插件回填（实测，不是复述）：
+回填（实测，带来源标签）：
 
 ```json
 {
-  "summary": "失败 0 条 / 通过 3 条。可以引用上面的实测输出作为证据。",
   "results": [
-    { "ok": true, "kind": "command",
-      "detail": "$ pnpm install --offline\n判定：输出包含 \"downloaded 0\"\n退出码 0\nstdout: Progress: resolved 6, reused 6, downloaded 0 …" }
+    { "ok": false, "kind": "versionClaim",
+      "detail": "✗ [node_modules/typescript] 实际 5.9.3，断言 9.9.9\n✓ [pnpm-lock.yaml] 锁文件里没有 9.9.9 的记录" }
   ]
 }
 ```
@@ -154,26 +171,24 @@ pnpm install --offline
 
 ## 免打扰设计
 
-自动追加轮次很容易变成噪音，所以有四道闸：
-
-1. **本轮已经取过证就不打扰**：出现过 `bash` / `pwsh` / `read` / `grep` / `web_search` / `verify_claims` 等调用即视为已核验。
-2. **短回答不打扰**：`minAnswerChars` 以下直接跳过。
-3. **轮数上限**：`maxRounds`（默认 2）。人工发一条新消息即重置预算。
-4. **状态闸**：agent 处于 `running` 或 inbox 有积压时不注入，避免和用户的 submit 抢时序。
+1. **全部核实通过就不说话**（v0.2 新增：只有出现 refuted / inconclusive / unverifiable 才注入）。
+2. **本轮已取证不打扰**：出现过 `bash` / `read` / `grep` / `web_search` / `verify_claims` 等。
+3. **短回答不触发**；**轮数上限** `maxRounds`，人工新消息即重置。
+4. **状态闸**：agent `running` 或 inbox 有积压时不注入。
 
 ---
 
 ## 安全边界
 
-`verify_claims` 会在本机执行命令，所以边界写死在代码里：
-
-- **不经过 shell**：`argv` 数组直接 `spawn`，没有管道/重定向/`&&`，也就没有 shell 注入面。Windows 下遇到 `.cmd`/`.bat` 才用 `cmd.exe /d /s /c` 包装，参数逐个按 msvcrt 规则转义。
+- **默认不执行回答里的命令**：`executeAnswerCommands: false` 时只查程序是否存在于 PATH。含管道/重定向/`&&`/命令替换的命令行**拒绝解析**，标 `unverifiable`，不猜。
+- **不经过 shell**：`argv` 直接 `spawn`；Windows 下遇 `.cmd`/`.bat` 才用 `cmd.exe /d /s /c` 包装并逐参转义。
 - **黑名单**：`rm` / `del` / `format` / `diskpart` / `dd` / `reg` / `schtasks` / `vssadmin` / `wevtutil` 等直接拒绝。
-- **超时**：每条检查默认 15 秒，超时 `SIGKILL` 并如实报告。
-- **输出上限**：4000 字符截断，不会把巨型输出灌进上下文。
-- **`expr` 空沙箱**：`vm.runInNewContext` + 空 context，没有 `require` / `process` / `globalThis`。
+- **超时**：默认 15 秒，超时 `SIGKILL` 并如实报告。
+- **输出上限**：4000 字符截断。
+- **`expr` 空沙箱**：`vm.runInNewContext` + 空 context，无 `require` / `process` / `globalThis`。
+- **联网只查公开 registry**：探测与 registry 查询不传输任何用户内容。
 
-它**不**走 DSH 的沙箱与审批链——这是插件层的已知限制。要更严就配 `denyBinaries`，或把 `verifyTool` 关掉只留自动复核。
+它**不**走 DSH 的沙箱与审批链——插件层的已知限制。要更严就收紧 `denyBinaries`，或 `verifyTool: false`。
 
 ---
 
@@ -181,32 +196,39 @@ pnpm install --offline
 
 ```bash
 pnpm install            # 联网
-pnpm install --offline  # 已有 pnpm store 时离线
-npm run verify          # tsc 检查 + 构建 + 4 套测试
+pnpm install --offline  # 已有 pnpm store 时
+npm run verify          # tsc 检查 + 构建 + 6 套测试
 ```
-
-代码结构：
 
 | 文件 | 职责 |
 |---|---|
-| [src/index.ts](src/index.ts) | 入口：注册工具、注入提示词段、装复核循环 |
-| [src/scanner.ts](src/scanner.ts) | 风险扫描器（纯函数，无宿主依赖） |
-| [src/verify.ts](src/verify.ts) | 断言执行器（命令 / 文件 / HTTP / 表达式 / 文本） |
-| [src/loop.ts](src/loop.ts) | 自动复核循环（`agent/status` → `agent.followup`） |
-| [src/tool.ts](src/tool.ts) | `verify_claims` 定义（裸 JSON Schema，不 import 宿主包） |
-| [src/prompts.ts](src/prompts.ts) | 注入文本与提示词段（中英） |
-| [src/config.ts](src/config.ts) | 配置类型 + StandardSchemaV1 校验 + 归一化 |
+| [src/index.ts](src/index.ts) | 入口：工具、提示词段、取证循环、联网探测 |
+| [src/scanner.ts](src/scanner.ts) | 风险扫描器（纯函数） |
+| [src/claims.ts](src/claims.ts) | 断言 → 可执行检查（含安全解析） |
+| [src/local.ts](src/local.ts) | Tier A 本机 oracle |
+| [src/evidence.ts](src/evidence.ts) | Tier A/B 编排 + 判定规则 |
+| [src/factored.ts](src/factored.ts) | Tier C 独立重推导 + 多数投票 |
+| [src/network.ts](src/network.ts) | 联网探测（带 TTL 缓存） |
+| [src/verify.ts](src/verify.ts) | 通用检查执行器 |
+| [src/loop.ts](src/loop.ts) | `agent/status` → 取证 → `agent.followup` |
+| [src/prompts.ts](src/prompts.ts) | 证据注入文本与提示词段（中英） |
+| [src/config.ts](src/config.ts) | 配置 + StandardSchemaV1 |
 
-用到的宿主扩展点：`ctx.tools.register()`、`ctx.systemPrompt.section()`、`ctx.on('agent/status', …, {global:true})`、`agent.session.snapshotEvents()`、`agent.followup()`。
+用到的宿主扩展点：`ctx.tools.register()`、`ctx.systemPrompt.section()`、`ctx.on('agent/status', …, {global:true})`、`agent.session.snapshotEvents()`、`agent.followup()`、`ctx.subagents.start()`（Tier C，缺失时自动降级）。
 
 ---
 
-## 已知限制
+## 已证实 / 未证实
 
-- 扫描器是启发式：它判断「这条可核验」，不判断「这条对不对」。判定交给执行。
-- 复核轮会多花一轮模型调用与 token。`minScore` 调高、`maxRounds` 调低可控制成本。
-- 只扫最终回答文本，不扫工具结果里的内容。
-- 提示词段固定用中文，除非 `language: en`。
+**已实测（有测试覆盖）**：本机 oracle 的判定正确性（PATH、包版本、版本断言、符号定义）、判定规则（来源数、冲突、弱证据中性）、断言翻译的安全约束、Tier C 投票与分裂处理、循环的预算与免打扰、注入的是证据而非请求。
+
+**未实测**：端到端「开插件 vs 不开插件」的错误率下降幅度。文献支持的是**机制**（外部反馈有效、内在自纠错有害），不是本插件的具体效果。要判定它有没有用，需要按同等推理成本对比四档：基线 / 仅提示词段 / Tier A+B / Tier A+B+C。
+
+**已知失效模式**：
+- 扫描器是启发式，会漏也会误报。裸编号（`2402.06380`）现在会被当版本类断言抓出来并标 `unverifiable`，但**不带数字形态的错**（记错的函数名、编错的字段名写在正文里而没加反引号）仍然抓不到。
+- Tier A 只能核验**本机可判**的断言；事实性断言（「这篇论文说了 X」）离线时只能走 Tier C。
+- Tier C 依赖宿主提供子代理能力，缺失时如实降级。
+- 多花模型调用与 token；`minScore` 调高、`maxRounds` 调低可控成本。
 
 ---
 

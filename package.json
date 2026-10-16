@@ -1,7 +1,7 @@
 {
   "name": "dsh-doubt",
-  "version": "0.1.0",
-  "description": "把「你确定吗」变成 DSH 的自动动作：扫描回答里未取证的断言，自动追加复核轮，并提供用真实执行核验断言的工具。Auto-recheck sloppy answers instead of asking \"are you sure\" by hand.",
+  "version": "0.2.0",
+  "description": "分层取证替代「你确定吗」：插件每轮结束自己跑本机确定性 oracle 与多来源交叉，把实测证据注入下一轮；离线时用无草稿上下文的独立重推导+多数投票；附 verify_claims 取证工具。",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -16,6 +16,14 @@
     "./verify": {
       "types": "./lib/verify.d.ts",
       "default": "./lib/verify.js"
+    },
+    "./evidence": {
+      "types": "./lib/evidence.d.ts",
+      "default": "./lib/evidence.js"
+    },
+    "./local": {
+      "types": "./lib/local.d.ts",
+      "default": "./lib/local.js"
     },
     "./package.json": "./package.json"
   },
@@ -32,7 +40,7 @@
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/loop.test.mjs",
+    "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs",
     "smoke": "node test/smoke.mjs",
     "verify": "npm run check && npm run build && npm test && npm run smoke",
     "install:local": "node scripts/install-local.mjs"
