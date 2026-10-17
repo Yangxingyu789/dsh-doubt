@@ -112,12 +112,16 @@ function mentionsOtherMachine(text: string | undefined, token: string): boolean 
  * 所以只认明确的 npm 语境。
  */
 const NPM_CONTEXT_RE = /\b(npm|npx|pnpm|yarn|package\.json|node_modules|package-lock|pnpm-lock|lockfile|registry)\b|包名|npm 包/i
+/** 「没有发布到 npm」说明的是**不在** registry 里，不是「可安装的 npm 包」。
+ * 只按关键词邻近判定会把它当断言，registry 404 于是变成一次假证伪。 */
+const NEGATED_PACKAGE_RE = /未发布|没有发布|未上架|不上架|不在\s*npm|未提交到\s*npm|不是\s*npm|非\s*npm|无此包|不存在于\s*npm|not\s+published|isn'?t\s+published|is\s+not\s+published|not\s+on\s+npm|no\s+such\s+package/i
 
 function assertsNpmPackage(text: string | undefined, token: string): boolean {
   const src = text ?? token
   const at = src.indexOf(token)
   if (at < 0) return false
   const window = src.slice(Math.max(0, at - 100), at + token.length + 100)
+  if (NEGATED_PACKAGE_RE.test(window)) return false
   return NPM_CONTEXT_RE.test(window)
 }
 

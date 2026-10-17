@@ -55,6 +55,16 @@ assert.deepEqual(safe.checks.map((c) => c.kind), ['commandAvailability'], '默�
 const withExec = extractClaims(scanAnswer('```bash\npnpm --version\n```', {}).findings, { executeAnswerCommands: true })
 assert.ok(withExec.some((c) => c.checks.some((k) => k.kind === 'command')), '显式开启后才生成可执行命令')
 
+// Regression: "not published to npm" must not be read as an npm-package assertion.
+// A keyword-only guard sent it to the registry, and the 404 then "refuted" a negative
+// statement that was true (local plugin, file: dependency).
+const negated = '`dsh-doubt` 没有发布到 npm（两个 registry 都 404）。'
+assert.ok(extractClaims(scanAnswer(negated, {}).findings, { text: negated }).every((c) => !c.checks.some((k) => k.kind === 'packageVersion')),
+  '否定语境不生成 packageVersion 检查')
+const asserted = '`some-pkg` 已发布到 npm，可以直接安装。'
+assert.ok(extractClaims(scanAnswer(asserted, {}).findings, { text: asserted }).some((c) => c.checks.some((k) => k.kind === 'packageVersion')),
+  '肯定语境仍然生成 packageVersion 检查')
+
 // ---- 端到端：离线取证 ----
 const ev = await gatherEvidence(claims, cfg, { online: false, probedAt: Date.now(), latencyMs: 0 })
 assert.equal(ev.length, claims.length)
