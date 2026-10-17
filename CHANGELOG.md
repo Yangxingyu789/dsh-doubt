@@ -6,6 +6,7 @@
 - **根因（已用真实宿主重放确认，不是推断）**：审核请求原本只传 `provider/model/messages/tools/maxTokens`，没有 reasoning 控制；宿主 `@deepseek-ai/dsh-llm-deepseek` 在未指定时按 `options.reasoningEffort ?? connection.defaults.reasoningEffort ?? "high"` 落成 **effort=high + thinking enabled**（`dsh-llm-deepseek/lib/index.js:1707,1719-1720`），而 thinking token 与 `max_tokens` 共用预算。把本机落盘的 turn 4 审核包（`buildReviewPacket` 复算：52,672 字符 / 7 个 draftParts / 22 条证据）经**真实安装版宿主 `LlmRuntime` + DeepSeekAdapter** 重放：第 1 次尝试（maxTokens=12000）返回 `outputTokens=12000`、**可见正文 `rawChars=0`**、finish=`max-tokens`；重试（24000）在多次运行中有时成功、有时同样被 thinking 吃满，于是回答只能带横幅放行。同一包 `reasoningEffort="off"` → 2.9s、325 output tokens 返回有效判定。
 - **修复**：审核请求显式发送 `reasoningEffort`，新增配置 `reviewReasoningEffort`（默认 `off`；可选 `low`/`high`/`max`/`default`，`default` 表示不传字段、回退宿主默认）；provider/模型不支持 reasoning 控制时自动去掉该字段重试一次（避免因 `UNSUPPORTED_REASONING_EFFORT` 变成漏审）；12000→24000 的 max-tokens 重试同样保持该设置。
 - **测试**：新增 `test/review-effort.test.mjs`（默认 off / 可配置 / 不支持时回退 / max-tokens 重试仍 off / 默认值），`npm test` 现为 11 个测试文件。
+- **附带修复（同一提交系列）**：闸门的「用户确认点」原先要求最后一条真人请求**同句**同时含确认词与动作词，导致用户对安装询问只回复「确认」时被误判为缺失。现在单独一句 `确认 / 批准 / 同意 / 允许 / 授权 / OK / yes` 也算明确授权（`src/guard.ts` 的 `confirmationSeen`，`test/guard.test.mjs` 已加断言）；草稿里自称「已确认」仍然不算。
 - **诚实边界**：本次修复在**仓库构建产物 + 真实宿主 LlmRuntime 重放**上验证；live profile 里运行的仍是 0.6.0，需要重新安装并再次重启 DSH 才会生效。重放中 `off` 模式有一次出现审核 JSON 两次不被接受、走了旧的 compact 兜底（裸 approve）——说明关闭 thinking 后**格式稳定性可能下降**；需要更强审核质量时可把 `reviewReasoningEffort` 设为 `low`（实测同一包 99s、能给出有效 verify，但慢且消耗更多）。该权衡尚未在真实会话中长跑验证。
 
 ## 0.6.0（危险变更闸门）

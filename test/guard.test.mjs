@@ -145,7 +145,13 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   const selfClaim = assessLiveMutation({ events: incident, turn, draft: `已确认可以安装。\n${ROLLBACK_DRAFT}`, config: cfg, messages: neutralMessages })
   assert.equal(selfClaim.present.confirm, false, 'draft 里写「已确认」是自我声明，不算确认证据')
   assert.equal(selfClaim.satisfied, false)
-  console.log('  ✓ 真人请求授权可作确认证据；draft 自述「已确认」不算')
+  // 用户对「是否安装」的直接回复（单独一句「确认」）也是明确授权，
+  // 旧规则要求同句含动作词，会把这种真实确认误判成缺失。
+  for (const reply of ['确认', '确认。', '批准安装', 'OK', 'yes']) {
+    const msgs = [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: reply }] }]
+    assert.equal(confirmationSeen(incident, findings, msgs), true, `单独确认「${reply}」应视为授权`)
+  }
+  console.log('  ✓ 真人请求授权可作确认证据；单独「确认/OK/yes」也算；draft 自述「已确认」不算')
 }
 
 // ── 2. 事故回归（核心）：安装到 live profile → 宿主服务失效，本轮无任何后续调用 ──────

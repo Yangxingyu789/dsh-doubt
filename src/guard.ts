@@ -216,6 +216,9 @@ export function confirmationSeen(
   const last = humans.length ? humans[humans.length - 1] : undefined
   if (!last) return false
   const text = collectText(last)
+  // 明确的一句确认（如用户在模型询问安装后回复「确认」）本身就是授权；
+  // 之前的规则要求同一句里同时出现动作词，会把这种真实确认误判为缺失。
+  if (/^(?:确认|批准|同意|允许|授权|approved?|confirm(?:ed)?|yes|ok)[。.!！\s]*$/i.test(text.trim())) return true
   return /确认|批准|同意|允许|授权|approve|confirm/i.test(text)
     && /安装|写入|修改|删除|停止|重启|install|write|delete|stop|restart/i.test(text)
 }
