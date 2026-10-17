@@ -214,8 +214,12 @@ export function validateReview(raw: unknown, packet: ReviewPacket): ReviewDecisi
     for (const ref of segment.evidence) {
       const source = packet.evidence.find((e) => e.id && e.id === ref?.callId)
       if (!source || source.resultIndex < 0 || source.state === 'unknown' || source.name === REVIEW_TOOL
-        || (segment.kind === 'postcondition' && source.state !== 'completed')
-        || typeof ref.quote !== 'string' || !ref.quote.trim() || !source.resultText.includes(ref.quote)) return fail('审核引用了缺失、无法解析的结果、不存在的原文，或用失败/未完成结果证明成功。')
+        || (segment.kind === 'postcondition' && source.state !== 'completed')) return fail('审核引用了缺失、无法解析的结果、不存在的原文，或用失败/未完成结果证明成功。')
+      // Whitespace-insensitive matching: reviewers reflow quotes when they copy them,
+      // which used to fail a valid citation on formatting alone.
+      const quoteText = typeof ref.quote === 'string' ? ref.quote : ''
+      const quoteOk = !!quoteText.trim() && (source.resultText.includes(quoteText) || squash(source.resultText).includes(squash(quoteText)))
+      if (!quoteOk) return fail(`审核引文不在工具结果原文里（callId=${source.id}，引文前 40 字：${quoteText.slice(0, 40)}）。`)
       cited.push(source)
     }
     if (segment.kind === 'postcondition') {
@@ -228,6 +232,107 @@ export function validateReview(raw: unknown, packet: ReviewPacket): ReviewDecisi
     }
   }
   return { approved: true, issues: [] }
+}
+
+/** 分段审核的切段计划：按 draftParts 聚合，每段 ≤ maxChars*0.55，段数有界 */
+export interface ReviewPlanChunk { id: number; text: string; partIds: number[] }
+
+export function planReviewChunks(draft: string, maxChars: number, maxChunks = 6): ReviewPlanChunk[] {
+  const parts = draftParts(draft)
+  const target = Math.max(2_000, Math.floor(maxChars * 0.55))
+  const chunks: ReviewPlanChunk[] = []
+  let cur: { id: number; text: string }[] = []
+  let len = 0
+  for (const p of parts) {
+    // 末段吸收剩余内容，保证段数有界（不会因为草稿过长而无限拆分）
+    if (cur.length && chunks.length < maxChunks - 1 && len + p.text.length > target) {
+      chunks.push({ id: chunks.length, text: cur.map((x) => x.text).join(''), partIds: cur.map((x) => x.id) })
+      cur = []
+      len = 0
+    }
+    cur.push(p)
+    len += p.text.length
+  }
+  if (cur.length) chunks.push({ id: chunks.length, text: cur.map((x) => x.text).join(''), partIds: cur.map((x) => x.id) })
+  return chunks
+}
+
+export interface ReviewOutcome {
+  decision: ReviewDecision
+  /** 未能取得有效判定的段；非空表示这轮只完成了部分覆盖（可精确披露） */
+  uncovered: { id: number; preview: string; code?: string }[]
+}
+
+const previewOf = (text: string, n = 40): string => {
+  const flat = text.replace(/\s+/g, ' ').trim()
+  return flat.length > n ? flat.slice(0, n) : flat
+}
+
+/** 审核一个包；超时/装不下时去掉历史证据再试一次（与单包路径一致的降级） */
+async function reviewOnePacket(packet: ReviewPacket, request: any, llm: any, cfg: DoubtConfig): Promise<ReviewDecision> {
+  let d = await reviewPacket(packet, request, llm, cfg)
+  const turn = packet.evidenceContext?.currentTurn
+  if (!d.approved && d.failure
+    && (d.failure.code === 'REVIEW_TIMEOUT' || d.failure.code === 'EVIDENCE_CONTEXT_LIMIT')
+    && packet.evidence.some((e) => e.turn !== turn)) {
+    const slim: ReviewPacket = {
+      ...packet,
+      evidence: packet.evidence.filter((e) => e.turn === turn),
+      evidenceContext: { ...packet.evidenceContext!, omittedCalls: packet.evidence.length, complete: false },
+    }
+    d = await reviewPacket(slim, request, llm, cfg)
+  }
+  return d
+}
+
+/**
+ * 审核整份草稿。长草稿/大证据时按段拆成多次审核：单包受 reviewMaxChars 限制，
+ * 装不下就会被裁剪 → complete=false → 审核者按指令返回 unavailable → 整轮 fail-open
+ * （EVIDENCE_CONTEXT_LIMIT）。分段后每包只带一段正文，能容纳更多证据，总预算不再
+ * 受单包上限约束；某段失败时也只披露该段，而不是放弃整轮。
+ */
+export async function reviewDraft(
+  events: readonly any[], turn: number, messages: readonly Message[], draft: string,
+  request: any, llm: any, cfg: DoubtConfig,
+): Promise<ReviewOutcome> {
+  const packetOf = (text: string): ReviewPacket => buildReviewPacket(events, turn, messages, text, cfg.reviewMaxChars)
+  const missingContext: ReviewDecision = { approved: false, issues: ['缺少可识别的真人任务上下文，不能验收完成声明。'] }
+
+  const chunks = cfg.segmentedReview ? planReviewChunks(draft, cfg.reviewMaxChars) : []
+  if (chunks.length <= 1) {
+    const packet = packetOf(draft)
+    if (!packet.requests.some((s) => s.trim())) return { decision: missingContext, uncovered: [] }
+    return { decision: await reviewOnePacket(packet, request, llm, cfg), uncovered: [] }
+  }
+
+  const issues: string[] = []
+  const uncovered: ReviewOutcome['uncovered'] = []
+  let failure: ReviewDecision['failure'] | undefined
+  for (const chunk of chunks) {
+    const packet = packetOf(chunk.text)
+    if (!packet.requests.some((s) => s.trim())) { issues.push(missingContext.issues[0]); break }
+    const d = await reviewOnePacket(packet, request, llm, cfg)
+    if (d.approved) continue
+    if (d.failure) {
+      failure = failure ?? d.failure
+      uncovered.push({ id: chunk.id, preview: previewOf(chunk.text), code: d.failure.code })
+      continue
+    }
+    // 拿到真实意见：立刻返回交给作者补查，不必等其余段（与单包路径语义一致）
+    return { decision: { approved: false, issues: d.issues.slice(0, 12) }, uncovered }
+  }
+  if (uncovered.length) {
+    return {
+      decision: {
+        approved: false,
+        issues: issues.length ? issues : ['分段审核未完成：' + (failure?.code ?? 'UNKNOWN')],
+        ...(failure ? { failure } : {}),
+      },
+      uncovered,
+    }
+  }
+  if (issues.length) return { decision: { approved: false, issues }, uncovered: [] }
+  return { decision: { approved: true, issues: [] }, uncovered: [] }
 }
 
 function message(role: string, text: string): Message {
@@ -314,7 +419,7 @@ export function toolOnlyChunks(chunks: readonly Chunk[]): Chunk[] {
 }
 
 /** Test seam is a real tool-less model call in production, not a heuristic verdict. */
-export async function reviewPacket(packet: ReviewPacket, request: any, llm: any, cfg: DoubtConfig, retry = false, repairNote = ''): Promise<ReviewDecision> {
+export async function reviewPacket(packet: ReviewPacket, request: any, llm: any, cfg: DoubtConfig, retry = false, repairNote = '', compact = false): Promise<ReviewDecision> {
   request.signal?.throwIfAborted()
   const data = reviewPayload(packet)
   if (data.length > cfg.reviewMaxChars) return unavailable('INPUT_LIMIT', { code: 'INPUT_LIMIT', inputChars: data.length })
@@ -324,9 +429,11 @@ export async function reviewPacket(packet: ReviewPacket, request: any, llm: any,
   // A contract violation is a formatting mistake, not a task verdict: the retry
   // carries the validator's exact complaint so the reviewer can repair its JSON.
   const parts = draftParts(packet.draft)
-  const instruction = repairNote
-    ? `${REVIEW_INSTRUCTION}\n\nYour previous reply was rejected by the output validator: ${repairNote}\nReply with ONLY the JSON object. If decision is approve, segments must cover every part exactly once and in order: partIds 0..${parts.length - 1} (${parts.length} parts). Keep evidence quotes as exact substrings of the cited tool result.`
-    : REVIEW_INSTRUCTION
+  const instruction = compact
+    ? `${REVIEW_INSTRUCTION}\n\nFINAL ATTEMPT: reply with ONLY {"decision":"approve"} when the whole draft is supportable, or {"decision":"verify","issues":[...]} otherwise. Do not include segments, partIds or evidence objects.`
+    : repairNote
+      ? `${REVIEW_INSTRUCTION}\n\nYour previous reply was rejected by the output validator: ${repairNote}\nReply with ONLY the JSON object. If decision is approve, segments must cover every part exactly once and in order: partIds 0..${parts.length - 1} (${parts.length} parts). Keep evidence quotes as exact substrings of the cited tool result.`
+      : REVIEW_INSTRUCTION
   // No sessionId, tools, author system prompt or author reasoning: this call
   // cannot re-enter the agent-output gate or execute transcript instructions.
   const reviewRequest = {
@@ -398,15 +505,29 @@ export async function reviewPacket(packet: ReviewPacket, request: any, llm: any,
       return await reviewPacket(slim, request, llm, cfg, true)
     }
     if (finish !== 'stop') return unavailable(failureCode || finish || 'MISSING_FINISH', { code: failureCode || finish || 'MISSING_FINISH', finish, inputChars: data.length, outputChars: size })
+    const reply = [...texts.values()].join('\n')
+    // Degraded last resort: a bare verdict, because the segmented contract requires the
+    // reviewer to reproduce exact quotes and numbering that this model often gets wrong.
+    if (compact) {
+      let parsed: any
+      try { parsed = JSON.parse(reply) } catch { return unavailable('INVALID_REVIEW', { code: 'INVALID_REVIEW', detail: 'compact reply was not valid JSON' }) }
+      if (parsed?.decision === 'approve') return { approved: true, issues: [] }
+      if (parsed?.decision === 'verify') {
+        const issues = Array.isArray(parsed.issues) ? parsed.issues.filter((s: unknown): s is string => typeof s === 'string' && !!s.trim()) : []
+        return { approved: false, issues: issues.length ? issues.slice(0, 12).map((s: string) => s.slice(0, 1200)) : ['审核未能确认结论与证据对应。'] }
+      }
+      return unavailable('INVALID_REVIEW', { code: 'INVALID_REVIEW', detail: 'compact reply was neither approve nor verify' })
+    }
     let decision: ReviewDecision
     try {
-      decision = validateReview(JSON.parse([...texts.values()].join('\n')), packet)
+      decision = validateReview(JSON.parse(reply), packet)
     } catch (parseError) {
       if (!retry) return await repair('the reply was not valid JSON')
-      throw parseError
+      return await reviewPacket(packet, request, llm, cfg, true, '', true)
     }
-    if (!decision.approved && decision.failure?.code === 'INVALID_REVIEW' && !retry) {
-      return await repair(decision.failure.detail ?? decision.issues[0] ?? 'output did not match the contract')
+    if (!decision.approved && decision.failure?.code === 'INVALID_REVIEW') {
+      if (!retry) return await repair(decision.failure.detail ?? decision.issues[0] ?? 'output did not match the contract')
+      return await reviewPacket(packet, request, llm, cfg, true, '', true)
     }
     return decision
   } catch (error) {
@@ -524,24 +645,12 @@ export function createCompletionGuard(getConfig: () => DoubtConfig, log: (...arg
       return
     }
     const events = current.agent.session?.snapshotEvents?.() ?? current.agent.session?.events ?? []
-    const packet = buildReviewPacket(events, current.turn, request.messages ?? [], draft, cfg.reviewMaxChars)
-    log(`dsh-doubt：turn ${current.turn} 证据覆盖`, packet.evidenceContext)
-    let decision = packet.requests.some((s) => s.trim())
-      ? await reviewPacket(packet, request, llm, cfg)
-      : { approved: false, issues: ['缺少可识别的真人任务上下文，不能验收完成声明。'] as string[] }
-    // A timed-out review is usually an oversized request, not a task failure.
-    // Retry once with the optional history dropped instead of withholding the answer.
-    if (!decision.approved && decision.failure?.code === 'REVIEW_TIMEOUT'
-      && packet.evidence.some((e) => e.turn !== current.turn)) {
-      const evidence = packet.evidence.filter((e) => e.turn === current.turn)
-      const slim: ReviewPacket = {
-        ...packet,
-        evidence,
-        evidenceContext: { ...packet.evidenceContext!, omittedCalls: packet.evidence.length, complete: false },
-      }
-      log(`dsh-doubt：turn ${current.turn} 审核超时，去掉历史记录（${packet.evidence.length - evidence.length} 条）重试一次`)
-      decision = await reviewPacket(slim, request, llm, cfg)
-    }
+    const plan = cfg.segmentedReview ? planReviewChunks(draft, cfg.reviewMaxChars) : []
+    log(`dsh-doubt：turn ${current.turn} 审核计划`, { draftChars: draft.length, segments: Math.max(1, plan.length), segmented: cfg.segmentedReview })
+    const outcome = await reviewDraft(events, current.turn, request.messages ?? [], draft, request, llm, cfg)
+    const decision = outcome.decision
+    const uncovered = outcome.uncovered
+    if (uncovered.length) log(`dsh-doubt：turn ${current.turn} 分段审核未完成 ${uncovered.length} 段`, uncovered.map((u) => u.code))
     request.signal?.throwIfAborted()
     if (disposed || active.get(String(request.sessionId)) !== current) return
     if (decision.approved) {
@@ -555,9 +664,13 @@ export function createCompletionGuard(getConfig: () => DoubtConfig, log: (...arg
       current.reviewFailed = true
       log('dsh-doubt：审核服务故障（不是任务验收失败）', decision.failure)
       // Never destroy the answer: say why the review did not complete and release the
-      // draft with an explicit "unreviewed" banner.
+      // draft with an explicit "unreviewed" banner. 分段审核时只披露没审完的那几段，
+      // 已审完的段不必被一起否定（逐段覆盖优于整轮放弃）。
       const detail = (decision.failure.detail ?? decision.issues[0] ?? '').slice(0, 300)
-      yield* releasedDraft(chunks, `\n\n——\n[dsh-doubt] 以上草稿**未经完整审核**：审核服务未完成（${decision.failure.code}）${detail ? `；原因：${detail}` : ''}。这不代表任务失败或完成，已执行工具的结果见上方记录。`, usage)
+      const banner = uncovered.length
+        ? `\n\n——\n[dsh-doubt] 以上草稿**只有部分段落完成审核**（${decision.failure.code}）：${uncovered.length} 段未能取得有效判定，其余段落已审完。\n${uncovered.slice(0, 3).map((u) => `- 第 ${u.id + 1} 段：${u.preview}…`).join('\n')}${uncovered.length > 3 ? `\n- …另有 ${uncovered.length - 3} 段未审完` : ''}\n这不代表任务失败或完成，已执行工具的结果见上方记录。`
+        : `\n\n——\n[dsh-doubt] 以上草稿**未经完整审核**：审核服务未完成（${decision.failure.code}）${detail ? `；原因：${detail}` : ''}。这不代表任务失败或完成，已执行工具的结果见上方记录。`
+      yield* releasedDraft(chunks, banner, usage)
       return
     }
     const toolAvailable = (request.tools ?? []).some((t: any) => t.name === REVIEW_TOOL)

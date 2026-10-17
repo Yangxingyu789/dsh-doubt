@@ -39,6 +39,8 @@
         # 120k 字符实测会让审核调用超过 60s（REVIEW_TIMEOUT → 回答被扣留）。
         reviewTimeoutMs: 120000
         reviewMaxChars: 48000
+        # 长草稿分段审核：单包装不下证据时按段拆成多次审核，避免整轮 fail-open
+        segmentedReview: true
 
         maxRounds: 2
         minScore: 6

@@ -46,6 +46,8 @@ export interface DoubtConfig {
   /** 审核请求的字符上限。审核输入基本是中文正文与工具证据，字符量级≈token 量级，
    *  120k 字符实测会让审核调用超过 60s 而超时（REVIEW_TIMEOUT → 回答被扣留） */
   reviewMaxChars: number
+  /** 分段审核：单包装不下证据时，把草稿按段拆成多次审核，避免整轮 fail-open */
+  segmentedReview: boolean
   /** 本机查找 node_modules / package.json 的起点 */
   workspace: string
 
@@ -97,6 +99,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   operationMaxRounds: 2,
   reviewTimeoutMs: 120_000,
   reviewMaxChars: 48_000,
+  segmentedReview: true,
   workspace: process.cwd(),
 
   maxRounds: 2,
@@ -183,6 +186,7 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
     operationMaxRounds: clampInt(src.operationMaxRounds, 0, 5, d.operationMaxRounds),
     reviewTimeoutMs: clampInt(src.reviewTimeoutMs, 100, 180_000, d.reviewTimeoutMs),
     reviewMaxChars: clampInt(src.reviewMaxChars, 1000, 500_000, d.reviewMaxChars),
+    segmentedReview: bool(src.segmentedReview, d.segmentedReview),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
 
     maxRounds,

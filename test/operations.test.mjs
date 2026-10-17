@@ -164,6 +164,23 @@ const repairedJson = await reviewPacket(packet, {}, { stream: async function* ()
   yield* textChunks(JSON.stringify(approval(packet.draft, refs)))
 } }, normalizeConfig({}))
 assert.equal(repairedJson.approved, true); assert.equal(jsonAttempts, 2)
+// A quote that was reflowed while copying still counts as grounded.
+assert.equal(validateReview(approval(packet.draft, [{ callId: 'check', quote: 'T r u e' }]), packet).approved, true, 'whitespace-insensitive quote match')
+// If the segmented contract fails twice, a bare verdict is the last resort: a formatting
+// problem must never turn into a withheld answer.
+let compactAttempts = 0
+const compacted = await reviewPacket(packet, {}, { stream: async function* (r) {
+  compactAttempts++
+  const system = r.messages[0].content[0].text
+  if (compactAttempts < 3) {
+    assert.ok(!system.includes('FINAL ATTEMPT'))
+    yield* textChunks(JSON.stringify({ decision: 'approve', segments: [] }))
+    return
+  }
+  assert.ok(system.includes('FINAL ATTEMPT'), 'third attempt uses the bare-verdict instruction')
+  yield* textChunks(JSON.stringify({ decision: 'approve' }))
+} }, normalizeConfig({}))
+assert.equal(compacted.approved, true); assert.equal(compactAttempts, 3)
 const badIds = validateReview({ decision: 'approve', segments: [{ partIds: [0, 2], kind: 'observation', evidence: refs }] }, indexedPacket)
 assert.equal(badIds.failure.code, 'INVALID_REVIEW')
 assert.match(String(badIds.failure.detail), /partId/)
