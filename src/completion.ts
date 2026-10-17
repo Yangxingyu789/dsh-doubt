@@ -7,6 +7,7 @@ import { randomUUID } from 'node:crypto'
 import type { DoubtConfig } from './config.js'
 import { collectText } from './scanner.js'
 import { toolTrace, type ToolTrace } from './operations.js'
+import { assessLiveMutation } from './guard.js'
 import type { PlainToolDefinition } from './tool.js'
 
 type Chunk = Record<string, any>
@@ -42,6 +43,7 @@ The supplied draftParts partition the full draft. Each segment must contain part
 For observation/postcondition, evidence is a nonempty array of {"callId":"actual id","quote":"exact nonempty substring of that tool's resultText"}. All cited results must actually support this particular claim. For postcondition, also give actionIds:[...]. For nonfactual/unverified evidence is [].
 For postcondition: actionIds contains ONLY the mutating action calls, never read/test/check calls. evidence contains ONLY independent checks started AFTER those actions finished, never the write receipt itself. Example: write id edit returns saved at resultIndex 1, read id check returns {"port":8080} at callIndex 2: actionIds=["edit"], evidence=[{"callId":"check","quote":"8080"}]. Split a completion claim and a raw observation into separate segments if needed. Report gaps in the language of the draft; phrase untested alternative explanations as possibilities, not established diagnoses.
 Keep the JSON minimal: as few segments as possible (one segment may cover a long contiguous partId range), never restate draft text, and do not narrate your analysis.
+Live-environment mutations need a stricter contract: writing .dsh/profiles/** or .dsh/plugins/**, installing into a running profile (pnpm/npm install), killing processes or stopping services, shutdown, registry/service/autostart changes, recursive deletes, or writes under system directories. When the trace shows such a mutation, the draft must disclose a backup location and a directly executable rollback command, and must include an independent health check started AFTER the mutation finished (a write/install receipt is not a health check). The mutation must be authorized by the user before it happened — either an approval event or an explicit user instruction in the requests; a hot-fix the model decided on its own is NOT completion evidence. If any of these is missing, return {"decision":"verify"} and name exactly which item is missing.
 Return only JSON. Approval is an evidence-based review, not a guarantee of truth. When uncertain, choose verify.`
 
 const squash = (s: string): string => s.replace(/\s+/g, '')
@@ -295,6 +297,15 @@ export async function reviewDraft(
   events: readonly any[], turn: number, messages: readonly Message[], draft: string,
   request: any, llm: any, cfg: DoubtConfig,
 ): Promise<ReviewOutcome> {
+  // 确定性闸门（在切段与模型审核之前）：危险变更必须在草稿里补齐回滚路径、用户确认与
+  // 动作后独立健康检查。缺任何一件直接打回（verify），不消耗模型审核调用，也不走
+  // 审核服务故障的 fail-open 路径——这是「模型破坏自己的运行环境」的结构性防护。
+  if (cfg.guardLiveMutation) {
+    const assessment = assessLiveMutation({ events, turn, draft, config: cfg, messages })
+    if (assessment.mutated && !assessment.satisfied) {
+      return { decision: { approved: false, issues: assessment.gaps }, uncovered: [] }
+    }
+  }
   const packetOf = (text: string): ReviewPacket => buildReviewPacket(events, turn, messages, text, cfg.reviewMaxChars)
   const missingContext: ReviewDecision = { approved: false, issues: ['缺少可识别的真人任务上下文，不能验收完成声明。'] }
 

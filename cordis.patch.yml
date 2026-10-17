@@ -41,6 +41,9 @@
         reviewMaxChars: 48000
         # 长草稿分段审核：单包装不下证据时按段拆成多次审核，避免整轮 fail-open
         segmentedReview: true
+        # 危险变更闸门：出现 live profile/插件安装、杀进程/停服务、注册表/服务、递归删除等
+        # 动作时，最终审核确定性打回，要求回滚路径 + 用户确认 + 动作后独立健康检查
+        guardLiveMutation: true
 
         maxRounds: 2
         minScore: 6

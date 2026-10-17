@@ -182,8 +182,37 @@ export function buildProvenanceText(input: ProvenanceSectionInput, lang: Lang): 
   ].join('\n')
 }
 
+const GUARD_SECTION_ZH = `## 危险变更闸门（dsh-doubt）
+
+以下动作会改变**正在运行**的宿主或系统，属于危险变更：
+- 写入/替换 \`.dsh/profiles/**\`、\`.dsh/plugins/**\`（含在 live profile 里 \`pnpm/npm install\`、安装或重载插件）；
+- 杀进程 / 停服务 / \`shutdown\` / 改自启动；
+- 修改注册表、服务、计划任务；
+- 递归删除文件或目录；
+- 覆盖系统目录（\`C:\\Windows\`、\`Program Files\`、\`ProgramData\`）。
+
+动作前必须：给出备份位置和可直接执行的回滚命令；向用户说明影响面并取得确认——这类动作不许自行决定就做。
+动作后必须：**另起一次工具调用**做独立健康检查，并把实测结果写进回答（安装回执不算健康检查）；健康检查失败 → 立即停止后续任务，直接给出回滚步骤。
+违反时最终审核会打回；不要用「已完成」措辞掩盖缺失的证据。`
+
+const GUARD_SECTION_EN = `## Live-mutation guard (dsh-doubt)
+
+These actions change the **running** host or system and are dangerous mutations:
+- writing/replacing files under \`.dsh/profiles/**\` or \`.dsh/plugins/**\` (including \`pnpm/npm install\` in a live profile, installing or hot-reloading a plugin);
+- killing processes, stopping services, \`shutdown\`, changing autostart;
+- registry, service or scheduled-task changes;
+- recursive file/directory deletion;
+- overwriting system directories (\`C:\\Windows\`, \`Program Files\`, \`ProgramData\`).
+
+Before acting you must: give a backup location and a directly executable rollback command; explain the impact to the user and obtain confirmation — never decide on such an action by yourself.
+After acting you must: start a **separate tool call** as an independent health check and put the measured result in the answer (an install receipt is not a health check). If the health check fails, stop the remaining work immediately and give the rollback steps.
+The final review rejects a draft that lacks any of these; do not hide the gap behind "completed" wording.`
+
 /** 系统提示词段：说明分层取证策略与硬性禁令 */
-export function promptSection(lang: Lang, opts: { requireSources: number } = { requireSources: 2 }): string {
+export function promptSection(
+  lang: Lang,
+  opts: { requireSources: number; guardLiveMutation?: boolean } = { requireSources: 2 },
+): string {
   return lang === 'zh'
     ? `## 分层取证（dsh-doubt）
 
@@ -194,7 +223,7 @@ export function promptSection(lang: Lang, opts: { requireSources: number } = { r
 2. 联网可用时：至少 ${opts.requireSources} 个**互相独立**的来源一致才算确认（例如两个 registry、官方文档 + 本地安装）。
 3. 离线且无本机判据时：把断言改写成自包含的小问题独立重推导多次，取多数；**不要**用「再想想你确定吗」这种方式——它会把对的改成错的。
 
-硬性禁令：
+${opts.guardLiveMutation === true ? `${GUARD_SECTION_ZH}\n\n` : ''}硬性禁令：
 - 这些规则覆盖工具操作、代码修改、安装/配置/修复、系统诊断和文件交付。执行成功不等于目标达成；修改后先单独复测，再宣布完成。
 - 操作/诊断的每条确定结论须写明对象、检查方法、实测结果；没有完成的相关检查就写「未验证」。调用过 bash/read 不代表整轮已经取证。最终回答在显示前会独立审核；doubt_review 返回缺口时继续实际取证，不要只改措辞。
 - 「缺失/不存在/无关联」必须说明查找范围并独立复核；路径解析失败、模板占位符或查询机制不同不能直接判作故障。
@@ -212,7 +241,7 @@ Evidence order (strict):
 2. When online: require ${opts.requireSources} **independent** agreeing sources (e.g. two registries, official docs + local install).
 3. When offline with no local judge: rewrite the assertion into a self-contained question, re-derive it independently several times, and take the majority. Do **not** do "think again, are you sure?" — that flips correct answers into wrong ones.
 
-Hard rules:
+${opts.guardLiveMutation === true ? `${GUARD_SECTION_EN}\n\n` : ''}Hard rules:
 - Apply these rules to tool operations, code changes, installs/configuration/repairs, system diagnosis and deliverables. Execution success is not goal completion; test postconditions separately after a change.
 - For each definite operation/diagnosis conclusion, state the target, method and measured result. Without a completed relevant check, say "unverified". Final answers are independently reviewed before display; when doubt_review returns evidence gaps, obtain actual evidence instead of merely rephrasing.
 - For missing/nonexistent/unassociated diagnoses, state search scope and cross-check independently. Parsing errors, template placeholders and differing lookup mechanisms do not by themselves prove a fault.

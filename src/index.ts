@@ -18,7 +18,7 @@ import { buildVerifyTool } from './tool.js'
 import { createCompletionGuard } from './completion.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.5.1'
+export const version = '0.6.0'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'
@@ -29,6 +29,8 @@ export { gatherEvidence, verdictOf } from './evidence.js'
 export { commandAvailability, packageVersion, rangeSatisfied, symbolExists, versionClaim, which } from './local.js'
 export { factoredCheck, normalizeAnswer } from './factored.js'
 export { NetProbe } from './network.js'
+export { assessLiveMutation, detectLiveMutations, rollbackDisclosed, confirmationSeen, healthChecked } from './guard.js'
+export type { LiveMutationAssessment, LiveMutationFinding, LiveMutationKind } from './guard.js'
 
 /** 系统提示词段位置：紧跟 dsh-ops 的 repository-tooling（3250-3252）之后 */
 const SECTION_ORDER = 3260
@@ -78,7 +80,10 @@ export function apply(ctx: Context, config: unknown): void {
       systemPrompt.section({
         name: SECTION_NAME,
         order: SECTION_ORDER,
-        text: promptSection(cfg.language === 'en' ? 'en' : 'zh', { requireSources: cfg.requireSources }),
+        text: promptSection(cfg.language === 'en' ? 'en' : 'zh', {
+          requireSources: cfg.requireSources,
+          guardLiveMutation: cfg.guardLiveMutation,
+        }),
       })
       log(`已注入提示词段 ${SECTION_NAME}（order ${SECTION_ORDER}）`)
     })
@@ -118,5 +123,5 @@ export function apply(ctx: Context, config: unknown): void {
     log(`自动取证已开启（Tier ${tier}）：requireSources=${cfg.requireSources} maxRounds=${cfg.maxRounds} minScore=${cfg.minScore} executeAnswerCommands=${cfg.executeAnswerCommands} requireOperationEvidence=${cfg.requireOperationEvidence} operationMaxRounds=${cfg.operationMaxRounds}`)
   }
 
-  log(`dsh-doubt v${version} 已加载（verifyTool=${cfg.verifyTool}, promptSection=${cfg.promptSection}, autoVerify=${cfg.autoVerify}, factored=${cfg.factored}）`)
+  log(`dsh-doubt v${version} 已加载（verifyTool=${cfg.verifyTool}, promptSection=${cfg.promptSection}, autoVerify=${cfg.autoVerify}, factored=${cfg.factored}, guardLiveMutation=${cfg.guardLiveMutation}）`)
 }

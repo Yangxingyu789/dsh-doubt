@@ -48,6 +48,12 @@ export interface DoubtConfig {
   reviewMaxChars: number
   /** 分段审核：单包装不下证据时，把草稿按段拆成多次审核，避免整轮 fail-open */
   segmentedReview: boolean
+  /** 危险变更闸门：工具轨迹出现 live 环境变更（live profile/plugins 写入、宿主机安装、
+   *  杀进程/停服务、注册表/服务、递归删除、系统目录写入）时，最终审核确定性打回，
+   *  要求回滚路径 + 用户确认 + 动作后独立健康检查；false 时完全退回旧行为 */
+  guardLiveMutation: boolean
+  /** 受保护的 live 路径片段（大小写、斜杠不敏感）；空数组按默认值处理 */
+  liveMutationPaths: string[]
   /** 本机查找 node_modules / package.json 的起点 */
   workspace: string
 
@@ -100,6 +106,8 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   reviewTimeoutMs: 120_000,
   reviewMaxChars: 48_000,
   segmentedReview: true,
+  guardLiveMutation: true,
+  liveMutationPaths: ['.dsh/profiles', '.dsh/plugins', 'program files', 'programdata', 'c:/windows'],
   workspace: process.cwd(),
 
   maxRounds: 2,
@@ -187,6 +195,8 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
     reviewTimeoutMs: clampInt(src.reviewTimeoutMs, 100, 180_000, d.reviewTimeoutMs),
     reviewMaxChars: clampInt(src.reviewMaxChars, 1000, 500_000, d.reviewMaxChars),
     segmentedReview: bool(src.segmentedReview, d.segmentedReview),
+    guardLiveMutation: bool(src.guardLiveMutation, d.guardLiveMutation),
+    liveMutationPaths: strings(src.liveMutationPaths, d.liveMutationPaths).map((s) => s.trim()),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
 
     maxRounds,
