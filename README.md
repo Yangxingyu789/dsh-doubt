@@ -115,6 +115,9 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `operationMaxRounds` | `2` | Recovery budget per host turn (0–5); 0 reviews but does not retry |
 | `reviewTimeoutMs` | `120000` | Per-attempt review deadline (two attempts max); a timeout never releases the unreviewed draft, but it now retries once without optional history |
 | `reviewMaxChars` | `48000` | Review request bound in chars (≈ tokens for Chinese). History fills at most a quarter of it, so requests no longer pad to the limit and time out |
+| `segmentedReview` | `true` | Review long drafts part by part when the full packet does not fit (see "Operation evidence gate"); `false` restores the single-packet path |
+| `guardLiveMutation` | `true` | Deterministic live-mutation gate before review (see "Live-mutation gate"); `false` restores the previous behaviour exactly |
+| `liveMutationPaths` | `.dsh/profiles`, `.dsh/plugins`, `program files`, `programdata`, `c:/windows` | Protected path fragments for `guardLiveMutation` (case- and slash-insensitive) |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
 | `maxRounds` | `2` | Injection budget (reset by a new human message) |
 | `minScore` | `6` | Trigger threshold |
@@ -191,6 +194,8 @@ The gate now buffers final text at `llm/stream` and sends human requests, the dr
 6. The reviewer covers numbered draft parts instead of copying the whole answer, and parts are grouped into ~400-character units (one part per source line made long answers emit one JSON segment per line). Token truncation triggers one internal retry with a larger output budget (12000 to 24000 tokens) that also drops optional history, with a separate configured deadline per attempt and no user-tool execution. A mixed `partIds`/`text` representation is accepted when the concatenated text still covers the draft; numeric-string and comma-joined `partIds` are accepted too.
 7. The whole packet is budgeted against `reviewMaxChars`, current-turn tool records included. Records stay whole while they fit; oversized ones are clipped with an explicit truncation marker plus `truncated`/`truncatedCalls`, so a busy turn can no longer be withheld as `INPUT_LIMIT`. Optional history is capped at a quarter of the budget, so ordinary requests stay well below the ceiling instead of being padded to it; if a review still times out, it is retried once without that history.
 
+**Segmented review (`segmentedReview`, default `true`):** when the draft plus current-turn evidence does not fit `reviewMaxChars`, the draft is split into at most six parts and each part is reviewed in its own packet, which leaves more room for evidence per part. A part that gets a `verify` reply returns immediately. If a part's review service fails, only the parts that were not reviewed are disclosed ("只有部分段落完成审核…") instead of failing the whole turn; a draft that fits in one packet still takes the original path. `segmentedReview: false` restores the old single-packet path, which can exceed the budget and fail closed as `INPUT_LIMIT`. Covered by controlled-reviewer tests (`test/segments.test.mjs`, `test/review-draft.test.mjs`); the real long-task effect is not yet measured.
+
 **Cost and limits:** each final answer adds a model call and latency, including short answers; truncation can add one more call. Review usage is not currently added to the original answer's token statistics. Intermediate tool-call text is withheld while tools continue through normal host execution/approval; final text is reviewed. Files already written use the separate document provenance rules. DeepSeek reasoning/signatures are retained for protocol continuation, not approved as final text. PTC-only sessions without the receipt tool and unsupported reasoning replay protocols cannot recover automatically. Evidence is textual and current-turn only, not image inspection or historical task-state management. Reviewer outages still withhold final drafts, but do not ask the author to repeat operations. Review can miss errors and reject valid answers; this is not a hallucination guarantee.
 
 Implementation: [src/completion.ts](src/completion.ts), [src/operations.ts](src/operations.ts). Offline contracts: `test/operations.test.mjs`. Real host services/loop with scripted models: `test/host.test.mjs`, `test/host-loop.test.mjs`. Separate live synthetic-evidence evaluation: `eval/review-live.mjs`; transport failure is ERROR, not successful rejection.
@@ -198,6 +203,34 @@ Implementation: [src/completion.ts](src/completion.ts), [src/operations.ts](src/
 Local 0.5.1 validation on 2026-10-17: 23 synthetic cases across three runs through real LlmRuntime and deepseek-flash matched expected verdicts (14 rejections, 9 approvals). The same long answer reproduced the old 0.5.0 generic failure with a `max-tokens` finish and passed on the new version. Actual AgentLoop UI frames withheld the premature tool-stage claim, and a reviewer SERVER failure caused no author retry. This is not a production error-rate estimate or proof that the pictured Windows issues were repaired. Update installed copies and restart DSH to load changes; repository tests alone do not establish desktop activation.
 
 A real AgentLoop fault-injection trial also confirmed that a live reviewer rejected an injected premature success draft, after which a live author independently read the temporary configuration and produced an approved answer without a second human message. The initial failure is injected; no real application is modified. Reproduce with `test/host-loop.test.mjs --app <app-dir> --live --account-home <DSH_HOME> --model deepseek-flash`.
+
+---
+
+## Live-mutation gate
+
+On 2026-10-17, a modified plugin was installed into the live DSH profile while the host was running; every host tool then failed with `cannot get required service "sessionProjections" in inactive context`, and only a restart recovered. The hot-reload root cause is **inferred, not proven** (no host log). `guardLiveMutation` (default `true`) turns that incident into a structural check: a deterministic gate in front of the reviewer, not a reminder in the prompt.
+
+The gate scans the current turn's tool trace with pure functions and recognizes these live-environment mutations (protected path fragments come from `liveMutationPaths`; matching is case- and slash-insensitive):
+
+- writing or editing files under `.dsh/profiles/**` or `.dsh/plugins/**`;
+- `pnpm`/`npm`/`yarn`/`corepack` `install`/`add`/`ci`/`rebuild` where the command or working directory hits a live path;
+- running the repository install script `node scripts/install-local.mjs` (it writes `.dsh/plugins`);
+- killing processes, stopping services, `shutdown`, restarting the computer;
+- registry / service / autostart changes (`reg add`, `New-ItemProperty` under HKLM/HKCU, `schtasks /create`);
+- recursive deletes (`Remove-Item -Recurse`, `rm -rf`, `del /s`, …);
+- writes to system directories (the default protected fragments include `Program Files`, `ProgramData`, `C:/Windows`).
+
+If one is found, the draft cannot be released as a completed task until the author supplies all three artifacts. Missing any one produces a deterministic `verify` rejection **before any reviewer model call**; it is not a review-service failure and it does not trigger the "unreviewed" banner. The rejection lists exactly what is missing and arrives as a `doubt_review` receipt:
+
+1. **Rollback path** — the backup location **and** a rollback command the user can actually run.
+2. **User confirmation point** — an approval event or the user's explicit authorization *before* the mutation. The model deciding on its own is not confirmation, and a sentence in the draft claiming the user confirmed does not count.
+3. **Independent post-action health check** — a separate tool call *after* the mutation that really completes and shows the host and tools still work. The install receipt, or the mutation's own success output, is not a health check. If that check fails, stop the task chain and give the rollback steps; do not keep working.
+
+With all three present the normal review still runs, and the reviewer also checks completion claims against evidence timing. The injected prompt section and the reviewer instruction carry the same rules, so the author is told before acting and the reviewer enforces them after. `guardLiveMutation: false` restores the previous behaviour exactly; `liveMutationPaths` replaces the protected path fragments (defaults in the configuration table).
+
+**Coverage and honesty:** the detector, the rejection path and the incident timeline are covered by unit and controlled-reviewer tests in `test/guard.test.mjs`. Real long tasks and real host sessions have **not** been verified: the inferred hot-reload mechanism has no host log, and the gate has not been observed in a live DSH session.
+
+---
 
 ## Provenance gate
 
@@ -251,7 +284,7 @@ It does **not** go through DSH's sandbox/approval chain — a known plugin-layer
 pnpm install            # online
 pnpm install --offline  # with a warm pnpm store
 npm run host:unpack     # unpack the installed app's app.asar for the host oracles (auto-detects the install; --app <dir> overrides)
-npm run verify          # typecheck + build + 7 test suites + smoke + 13 repository checks + host suites + independent oracles
+npm run verify          # typecheck + build + 10 test suites + smoke + 13 repository checks + host suites + independent oracles
 # The two host suites and the independent oracles need the installed desktop app.
 # They auto-detect it and print SKIP (exit 0) when it is absent instead of failing.
 npm run verify:host
@@ -283,6 +316,7 @@ module in the host copy says nothing about this plugin.
 | [src/scanner.ts](src/scanner.ts) | risk scanner (pure) |
 | [src/completion.ts](src/completion.ts) | Buffered review, evidence contract, receipts and fail-closed handling |
 | [src/operations.ts](src/operations.ts) | Tool-call/result correlation and execution states |
+| [src/guard.ts](src/guard.ts) | live-mutation detection and the rollback/confirmation/health-check assessment (pure) |
 | [src/claims.ts](src/claims.ts) | claims → executable checks (safe parsing) |
 | [src/local.ts](src/local.ts) | Tier A local oracles |
 | [src/evidence.ts](src/evidence.ts) | Tier A/B orchestration + verdict rules |
@@ -344,8 +378,8 @@ than quietly dropped.
 
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
-| 1 | 7 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 7 `node test/*.test.mjs`; rerun with `npm run verify` |
-| 2 | Version 0.5.1, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.5.1` |
+| 1 | 10 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 10 `node test/*.test.mjs`; rerun with `npm run verify` |
+| 2 | Version 0.6.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.6.0` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |
@@ -377,6 +411,8 @@ than quietly dropped.
 | 31 | Draft parts are grouped into ~400-char units and the truncation retry uses 12000→24000 tokens and drops history | **sourced (source + tests)** | `src/completion.ts` `draftParts()` grouping and the `finish === 'max-tokens'` retry branch; `test/operations.test.mjs` asserts 200 short lines merge into ≤30 parts with the exact draft preserved, and that the retry sees 24000 tokens with only current-turn records |
 | 32 | `INVALID_REVIEW` is raised only by `validateReview`'s `fail()` branches, and it occurred once in this session | **sourced (source + session log)** | `src/completion.ts` `fail()` returns `failure.code = 'INVALID_REVIEW'`; this session's log records exactly one occurrence: turn 12 at 17:09:34 local |
 | 33 | A contract violation or malformed JSON is now retried once with the validator's reason, mixed `partIds`/`text` is accepted when text coverage matches, and the notice carries the reason | **sourced (source + tests)** | `src/completion.ts` `repair()`/`repairNote` and the relaxed coverage branch; `test/operations.test.mjs` asserts the repair retry carries "rejected by the output validator" and `partIds 0..0`, that invalid JSON is retried, that mixed representation approves, and that `{partIds:[0,2]}` reports a `partId` detail |
+| 34 | The live-mutation gate rejects a turn that mutates the live host environment unless rollback, user confirmation and an independent post-action health check are all disclosed | **sourced (by tests)** | `test/guard.test.mjs`: the incident timeline (install script → live-profile `pnpm install` → no later call) is rejected as `verify` with zero reviewer calls; the all-present case proceeds to review; `guardLiveMutation: false` takes the old path |
+| 35 | The 2026-10-17 incident: installing into the live profile while DSH was running was followed by every tool failing with `cannot get required service "sessionProjections" in inactive context`; a restart restored them | **UNSOURCED — no host log** | recorded in the handover notes and the session timeline; the hot-reload root cause is an inference, and the gate's effect in a real host session has not been measured |
 
 If you want items 8, 10, 11 or 12 to become sourced, the honest options are: (a) commit a
 **sanitised** corpus (session IDs and paths stripped) so the numbers can be rebuilt, or (b)

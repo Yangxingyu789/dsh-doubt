@@ -1,5 +1,15 @@
 # 更新日志
 
+## 0.6.0（危险变更闸门）
+
+- 新增危险变更闸门 `guardLiveMutation`（默认 `true`）与受保护路径列表 `liveMutationPaths`（默认 `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows`；大小写与斜杠不敏感）。闸门在最终审核前用纯函数扫描本轮工具轨迹，识别：写 live profile / plugins；在 live 路径执行 `pnpm`/`npm`/`yarn`/`corepack` 的 `install`/`add`/`ci`/`rebuild`；执行仓库安装脚本 `node scripts/install-local.mjs`（它会写 `.dsh/plugins`）；杀进程 / 停服务 / 关机 / 重启；注册表 / 服务 / 自启动修改；递归删除；写系统目录（`Program Files`、`ProgramData`、`C:/Windows` 等）。
+- 命中后**确定性打回**（`verify`，不是审核服务故障，也不触发「未经审核」横幅）：草稿不得作为完成结果放行，必须补齐三件产物，缺一不放行，`doubt_review` 回执逐条点名缺什么——①回滚路径（备份位置 + 可直接执行的回滚命令）；②用户确认点（批准事件或用户明确授权；草稿里自称「已确认」不算）；③动作后独立健康检查（变更后另起一次工具调用并真实完成；安装回执不算）。健康检查失败时必须停止后续任务并直接给回滚步骤。三件齐全才继续走正常审核；`guardLiveMutation: false` 完全回退旧行为。
+- 审核指令（`REVIEW_INSTRUCTION`）与系统提示词段同步加硬规则：危险变更必须披露回滚路径、用户确认与动作后独立健康检查，识别到 live 环境变更而草稿缺证据时返回 `verify` 并点名缺项；提示词段在动作前就要求说明影响面、取得确认、给出回滚路径，动作后另起调用做健康检查，不许用「已完成」措辞掩盖。
+- **事故背景（本次闸门的动机）**：2026-10-17 23:46 在 DSH 宿主运行中把改过的插件装进 live profile（`node scripts/install-local.mjs` → profile 内 `pnpm install --offline`），随后宿主所有工具报 `cannot get required service "sessionProjections" in inactive context`，工具全部不可用；用户重启 DSH 后于 00:07 恢复探测。同一份代码在新进程加载正常且测试全过。热重载导致服务上下文失效是**推断，无宿主日志可证实**。该事故时间线已固化为 `test/guard.test.mjs` 的回归用例（受控 reviewer 直接调 `reviewDraft`）；这只是受控测试，不是真实会话中的生效记录。
+- 新增 `test/guard.test.mjs` 并纳入 `npm test`（共 10 个测试文件）：危险动作识别（安装脚本 / live profile 安装 / live 路径写入 / 递归删除 / 杀进程 / 注册表，以及 `read`、`node --version`、仓库 `edit`、`ops_replace` dryRun 等反例）、事故回归、三件产物齐全放行、缺回滚/确认/健康检查分别打回、关闭开关回退、普通轨迹不误伤。
+- 一并纳入 0.5.1 之后完成但未单独发版的分段审核（`segmentedReview`，默认 `true`）：整包超出 `reviewMaxChars` 时按段审核，任一段 `verify` 立即返回，服务故障只披露未审完的段，`false` 回退单包路径。
+- **诚实边界**：以上覆盖来自单元测试与受控 reviewer 测试；真实长任务端到端、真实宿主会话中闸门是否按预期触发与拦停**尚未验证**，没有「已在真实会话生效」的实测记录。版本号统一为 0.6.0（`package.json`、`dsh-plugin.json`、`src/index.ts`），`test/host.test.mjs` 的版本断言同步更新。
+
 ## 0.5.1（审核故障与任务缺证分开处理）
 
 - 修复审核器错误被当作证据缺口、耗尽主模型补查次数的缺陷。保留安全的接口错误码；审核故障不发补查回执，也不启动旧版回合后检查。

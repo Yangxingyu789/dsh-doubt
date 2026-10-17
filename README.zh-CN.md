@@ -116,6 +116,9 @@ pnpm install --offline
 | `operationMaxRounds` | `2` | 每个宿主 turn 退回补查上限（0–5）；0 仍审核但不重试 |
 | `reviewTimeoutMs` | `120000` | 单次审核超时（最多两次尝试）；超时不放行原稿，但会去掉历史记录重试一次 |
 | `reviewMaxChars` | `48000` | 审核请求字符上限（中文按字≈token）。历史记录最多只占 1/4，避免请求顶满上限而超时 |
+| `segmentedReview` | `true` | 整包装不下时按段审核长草稿（见「操作取证闸」）；`false` 回退单包路径 |
+| `guardLiveMutation` | `true` | 审核前的确定性危险变更闸门（见「危险变更闸门」）；`false` 完全回退旧行为 |
+| `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | `guardLiveMutation` 的受保护路径片段（大小写、斜杠不敏感） |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
 | `maxRounds` | `2` | 注入轮数上限（人工发新消息即重置） |
 | `minScore` | `6` | 触发阈值，调高 = 更少打扰 |
@@ -215,6 +218,8 @@ pnpm install --offline
 6. 审核输出用段落编号覆盖全文，段落按 ~400 字符分组（此前一行一段，长回答会让审核器每行输出一个 JSON 段）。输出截断时内部重试一次（12000 → 24000 tokens）并顺带丢掉可选历史，每次遵守 `reviewTimeoutMs`；该重试不执行用户工具。`partIds` 与 `text` 混用但拼接后仍覆盖草稿时予以接受；数字字符串与逗号连接的 `partIds` 也接受。
 7. 整个请求按 `reviewMaxChars` 做预算，**当前轮工具记录也算在内**：装得下就整条保留，装不下就按份额截短，并写入显式截断标记与 `truncated`/`truncatedCalls`，因此工具输出很多的一轮不再以 `INPUT_LIMIT` 被扣留。历史记录最多只占预算的四分之一，普通请求不再顶满上限；万一仍然超时，会去掉历史重试一次。
 
+**分段审核（`segmentedReview`，默认 `true`）**：整包（草稿 + 本轮证据）超出 `reviewMaxChars` 时，按 `draftParts` 把草稿切成最多 6 段，每段单独打包审核，每包能留更多空间给证据。任一段返回 `verify` 立即返回意见；某段审核服务失败时只披露未审完的段（「只有部分段落完成审核…」），不再整轮失败；装得下的草稿仍走原单包路径。`segmentedReview: false` 回退旧单包路径（可能超出预算并按 `INPUT_LIMIT` 失败关闭）。由受控 reviewer 测试覆盖（`test/segments.test.mjs`、`test/review-draft.test.mjs`）；真实长任务效果尚未实测。
+
 **成本和边界**：每次最终回答增加模型调用和等待，包括短回答；输出截断最多再审核一次。审核用量目前不并入原回答 token 统计。带工具调用的中间正文会暂缓显示，工具照常经过宿主执行/审批流程；最终回答统一审核。已写入磁盘的文档仍使用原溯源规则。DeepSeek 思考内容/签名为协议继续执行而保留，不是审核后的最终正文。PTC-only 未暴露回执工具、未知思考回放协议不支持自动补查。材料是本轮文本工具证据，不能代替图像验收或完整历史任务管理。审核服务故障仍会阻止最终草稿显示，但不会误称“自动取证用尽”或要求重新操作。模型审核会漏判/误判，不保证消除幻觉。
 
 实现：[src/completion.ts](src/completion.ts)、[src/operations.ts](src/operations.ts)。离线契约测试见 `test/operations.test.mjs`；真实宿主核心/循环测试见 `test/host.test.mjs`、`test/host-loop.test.mjs`。`eval/review-live.mjs` 用真实模型审核合成证据，网络失败计为 ERROR，不算正确拦截。
@@ -222,6 +227,34 @@ pnpm install --offline
 2026-10-17 的 0.5.1 验证：通过真实 LlmRuntime 和 deepseek-flash，分三次运行的 23 个合成案例符合预期（14 项拒绝、9 项放行）。同一长回答在旧 0.5.0 中触发 `max-tokens` 并复现“审核没有正常完成”，新版通过。另在真实 AgentLoop 的 UI 输出流确认中间结论被隐藏，审核接口 SERVER 故障没有触发重复操作。这些是有限样本，不是生产错误率，也不证明截图中的 Windows 任务已经修复。更新安装副本并重启 DSH 才会加载新代码；仓库测试不等于桌面已生效。
 
 真实 AgentLoop 的故障注入测试还验证了：初始过早成功草稿被真实审核模型拦截后，真实执行模型自行回读临时配置，并提交了通过审核的回答，无需第二条人工消息。初始失败为人为注入，测试不操作真实应用。可用 `test/host-loop.test.mjs --app <安装目录> --live --account-home <DSH_HOME> --model deepseek-flash` 重跑。
+
+---
+
+## 危险变更闸门
+
+2026-10-17，在 DSH 运行中把改过的插件装进 live profile 后，宿主所有工具报 `cannot get required service "sessionProjections" in inactive context`，重启 DSH 才恢复。热重载根因是**推断，未证实**（没有宿主日志）。`guardLiveMutation`（默认 `true`）把这次事故变成结构性检查：在审核器之前加一道确定性闸门，而不是只在提示词里提醒。
+
+闸门用纯函数扫描本轮工具轨迹，识别下列危险变更（受保护路径片段来自 `liveMutationPaths`，大小写与斜杠不敏感）：
+
+- 写或改 `.dsh/profiles/**`、`.dsh/plugins/**` 下的文件；
+- `pnpm`/`npm`/`yarn`/`corepack` 的 `install`/`add`/`ci`/`rebuild`，且命令或工作目录命中 live 路径；
+- 执行仓库安装脚本 `node scripts/install-local.mjs`（它会写 `.dsh/plugins`）；
+- 杀进程、停服务、`shutdown`、重启电脑；
+- 改注册表 / 服务 / 自启动（`reg add`、HKLM/HKCU 下的 `New-ItemProperty`、`schtasks /create`）；
+- 递归删除（`Remove-Item -Recurse`、`rm -rf`、`del /s` 等）；
+- 写系统目录（默认受保护片段含 `Program Files`、`ProgramData`、`C:/Windows`）。
+
+命中后，草稿不得作为完成结果放行，必须补齐三件产物；缺任何一件都会在**调用审核模型之前**确定性打回为 `verify`——这不是审核服务故障，也不会触发「未经审核」横幅。打回会逐条点名缺什么，以 `doubt_review` 回执交给作者：
+
+1. **回滚路径**：备份位置**和**用户可直接执行的回滚命令。
+2. **用户确认点**：动作**之前**的批准事件或用户明确授权。模型自行决定不算确认，草稿里自称「用户已确认」也不算。
+3. **动作后独立健康检查**：变更**之后**另起一次工具调用并真实完成，证明宿主和工具仍可用。安装回执或变更自身的成功输出不算健康检查；健康检查失败时必须停止后续任务并直接给回滚步骤，不许继续干活。
+
+三件产物齐全时继续走正常审核：审核器仍会核对完成声明与证据时序。注入的系统提示词段与审核指令带同一套硬规则：动作前先告诉作者，动作后由审核器执行。`guardLiveMutation: false` 完全回退旧行为；`liveMutationPaths` 用于替换受保护的路径片段（默认值见配置表）。
+
+**覆盖与诚实边界**：识别规则、打回路径与事故时间线由 `test/guard.test.mjs` 的单元测试和受控 reviewer 测试覆盖。真实长任务与真实宿主会话**尚未验证**：推断的热重载机制没有宿主日志，闸门在真实 DSH 会话中的表现也没有观测记录。
+
+---
 
 ## 溯源闸
 
@@ -242,7 +275,7 @@ pnpm install --offline
 pnpm install            # 联网
 pnpm install --offline  # 已有 pnpm store 时
 npm run host:unpack     # 解包已安装 DSH 的 app.asar 供宿主级检查使用（自动定位安装目录，可用 --app 覆盖）
-npm run verify          # tsc 检查 + 构建 + 7 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判
+npm run verify          # tsc 检查 + 构建 + 10 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判
 # 两个宿主测试与外部裁判需要已安装的桌面应用；找不到时打印 SKIP 并以 0 退出，不会误报失败。
 npm run verify:host
 npm run verify:host-loop
@@ -260,6 +293,7 @@ npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model
 | [src/scanner.ts](src/scanner.ts) | 风险扫描器（纯函数） |
 | [src/completion.ts](src/completion.ts) | 显示前审核、证据契约、回执和失败关闭 |
 | [src/operations.ts](src/operations.ts) | 工具调用/原始结果配对与执行状态 |
+| [src/guard.ts](src/guard.ts) | 危险变更识别与回滚/确认/健康检查三件产物评估（纯函数） |
 | [src/claims.ts](src/claims.ts) | 断言 → 可执行检查（含安全解析） |
 | [src/local.ts](src/local.ts) | Tier A 本机 oracle |
 | [src/evidence.ts](src/evidence.ts) | Tier A/B 编排 + 判定规则 |
@@ -319,8 +353,8 @@ npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model
 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
-| 1 | 7 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 7 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.5.1，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 实测输出 `版本一致：0.5.1` |
+| 1 | 10 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 10 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
+| 2 | 版本 0.6.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.0` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |
@@ -352,6 +386,8 @@ npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model
 | 31 | 段落改为按 ~400 字符分组，截断重试改用 12000→24000 tokens 并丢掉历史 | **有出处（源码 + 测试）** | `src/completion.ts` 的 `draftParts()` 分组与 `finish === 'max-tokens'` 重试分支；`test/operations.test.mjs` 断言 200 行短句合并成 ≤30 段且拼回原文一致，并断言重试时 `maxTokens=24000` 且只剩当前轮记录 |
 | 32 | `INVALID_REVIEW` 只出自 `validateReview` 的 `fail()` 分支，本会话出现过一次 | **有出处（源码 + 会话日志）** | `src/completion.ts` 的 `fail()` 返回 `failure.code = 'INVALID_REVIEW'`；本会话日志里恰好一条：turn 12，本地时间 17:09:34 |
 | 33 | 契约不满足/JSON 非法现在会带着校验器原因重试一次；`partIds` 与 `text` 混用在正文覆盖一致时接受；提示带具体原因 | **有出处（源码 + 测试）** | `src/completion.ts` 的 `repair()`/`repairNote` 与放宽后的覆盖分支；`test/operations.test.mjs` 断言重试请求含 "rejected by the output validator" 与 `partIds 0..0`、非法 JSON 会重试、混用表示可放行、`{partIds:[0,2]}` 报出 `partId` 细节 |
+| 34 | 危险变更闸门在缺少回滚 / 用户确认 / 动作后独立健康检查时拒绝放行 | **有出处（由测试保证）** | `test/guard.test.mjs`：事故时间线（安装脚本 → live profile `pnpm install` → 无后续调用）以 `verify` 打回且 0 次审核模型调用；三件齐全时继续审核；`guardLiveMutation: false` 走旧路径 |
+| 35 | 2026-10-17 事故：DSH 运行中写入 live profile 后所有工具报 `cannot get required service "sessionProjections" in inactive context`，重启后恢复 | **无依据——没有宿主日志** | 记录来自交接文档与会话时间线；热重载根因是推断，闸门在真实宿主会话中的效果未实测 |
 
 如果你希望第 8、10、11、12 条变成「有出处」，诚实的做法只有两条：(a) 提交一份**脱敏后**的语料
 （去掉会话 ID 与路径），让这些数字可重建；或 (b) 重新推导一遍，并写明测于哪个 commit。
