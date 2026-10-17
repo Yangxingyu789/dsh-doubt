@@ -85,11 +85,11 @@ listeners.forEach(([, h]) => h({ agent: a3, status: 'idle' }))
 await tick()
 assert.equal(a3.followups.length, 0, '超过 maxRounds 应停手')
 
-// 4) 本轮已经调用过取证工具 → 不打扰
+// 4) 调用过工具不能豁免尚未证实的其它断言
 const a4 = makeAgent('s2', events(1, { toolCalls: ['bash', 'read'] }))
 listeners.forEach(([, h]) => h({ agent: a4, status: 'idle' }))
 await tick()
-assert.equal(a4.followups.length, 0, '已取证不应触发')
+assert.equal(a4.followups.length, 1, '仅出现 bash/read 不能跳过路径核验')
 
 // 5) 短回答不触发
 const a5 = makeAgent('s3', events(1, { text: '好的，收到。' }))
@@ -144,7 +144,7 @@ const fakeCtx = {
   inject: (deps, cb) => cb(injectedCtx),
   on: () => () => {},
 }
-apply(fakeCtx, { maxRounds: 1 })
+apply(fakeCtx, { maxRounds: 1, requireOperationEvidence: false })
 assert.deepEqual(registered.map((t) => t.name), ['verify_claims'], '应注册 verify_claims')
 assert.equal(sections[0].name, 'dsh-doubt:self-check')
 assert.ok(sections[0].order > 3000 && sections[0].order < 5000)
@@ -169,7 +169,7 @@ const strictCtx = {
   inject: (deps, cb) => cb(strictInjected),
 }
 let strictErr = null
-try { apply(strictCtx, { maxRounds: 1 }) } catch (e) { strictErr = e }
+try { apply(strictCtx, { maxRounds: 1, requireOperationEvidence: false }) } catch (e) { strictErr = e }
 assert.equal(strictErr, null, 'apply 不得在未 inject 的外层 ctx 上取服务：' + (strictErr && strictErr.message))
 assert.deepEqual(strictRegistered, ['verify_claims'], '必须用注入后的上下文注册工具')
 assert.equal(strictSections[0], 'dsh-doubt:self-check', '必须用注入后的上下文注入提示词段')
@@ -264,5 +264,50 @@ assert.equal(provCount(), 5, 'ping-pong 链上的第 5 次必须被硬顶挡住'
 await writeTurn(11, 'E:\\proj\\F.md', DOC_BODY, 'user')
 assert.equal(provCount(), 6, '新的 人工轮应重置溯源预算')
 provLoop.dispose()
+
+// Terminal review notices are plugin output, not a fresh task for legacy checks.
+// Include a deliverable and risky prose to prove the skip precedes provenance,
+// probing and Tier C, rather than passing only because the notice is too short.
+let skipListener, skipCalls = 0, probeCalls = 0, skippedFactoredCalls = 0, skippedReviewedCalls = 0
+const terminalNotice = `[dsh-doubt] 本次尚未完成验证。自动取证轮数已用尽。\n审核意见（待核实）：\n${DOC_BODY}`
+const skipAgent = makeAgent('reviewer-failed', docEvents(1, { path: 'E:\\proj\\terminal.md', text: terminalNotice }))
+const skipped = installDoubtLoop({ on: (_name, fn) => { skipListener = fn; return () => {} } }, {
+  getConfig: () => normalizeConfig({ minAnswerChars: 1, minScore: 0 }), delayMs: 0,
+  skipTurn: (agent, turn) => { skipCalls++; assert.equal(agent, skipAgent); assert.equal(turn, 1); return true },
+  reviewedTurn: () => { skippedReviewedCalls++; return false },
+  probe: { state: async () => { probeCalls++; return { online: true } } },
+  factoredHost: () => { skippedFactoredCalls++; throw new Error('terminal review must not start factored children') },
+})
+skipListener({ agent: skipAgent, status: 'idle' }); await tick()
+skipListener({ agent: skipAgent, status: 'idle' }); await tick()
+assert.equal(skipCalls, 1, 'terminal notice must be marked handled after the first idle event')
+assert.equal(probeCalls, 0); assert.equal(skippedFactoredCalls, 0); assert.equal(skippedReviewedCalls, 0)
+assert.equal(skipAgent.followups.length, 0, 'terminal notice must not request provenance or another followup')
+skipped.dispose()
+
+// Accepted prose must not trigger a second assertion/Tier C audit, while an
+// actual written deliverable still receives its separate provenance requirement.
+let reviewedListener, reviewedCalls = 0, reviewedProbeCalls = 0, reviewedFactoredCalls = 0
+const reviewedLoop = installDoubtLoop({ on: (_name, fn) => { reviewedListener = fn; return () => {} } }, {
+  getConfig: () => normalizeConfig({ minAnswerChars: 1, minScore: 0 }), delayMs: 0,
+  reviewedTurn: (_agent, turn) => { reviewedCalls++; assert.equal(turn, 1); return true },
+  probe: { state: async () => { reviewedProbeCalls++; return { online: true } } },
+  factoredHost: () => { reviewedFactoredCalls++; throw new Error('accepted prose must not start factored children') },
+})
+const reviewedAgent = makeAgent('reviewed-prose', events(1))
+reviewedListener({ agent: reviewedAgent, status: 'idle' }); await tick()
+reviewedListener({ agent: reviewedAgent, status: 'idle' }); await tick()
+assert.equal(reviewedCalls, 1, 'accepted prose is handled once')
+assert.equal(reviewedAgent.followups.length, 0)
+
+const reviewedDocAgent = makeAgent('reviewed-document', docEvents(1, { path: 'E:\\proj\\reviewed.md', text: DOC_BODY }))
+reviewedListener({ agent: reviewedDocAgent, status: 'idle' }); await tick()
+reviewedListener({ agent: reviewedDocAgent, status: 'idle' }); await tick()
+assert.equal(reviewedDocAgent.followups.length, 1, 'accepting prose must retain document provenance requirements')
+assert.equal(reviewedDocAgent.followups[0].source.summary, 'provenance')
+assert.match(reviewedDocAgent.followups[0].content[0].text, /reviewed\.md/)
+assert.equal(reviewedCalls, 1, 'provenance is checked before the accepted-prose skip')
+assert.equal(reviewedProbeCalls, 0); assert.equal(reviewedFactoredCalls, 0)
+reviewedLoop.dispose()
 
 console.log('loop.test OK（复核循环 + 预算 + 免打扰 + 工具执行 + 交付文档溯源 全部通过）')

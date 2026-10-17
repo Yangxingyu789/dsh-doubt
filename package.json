@@ -1,7 +1,7 @@
 {
   "name": "dsh-doubt",
-  "version": "0.4.0",
-  "description": "分层取证替代「你确定吗」：插件每轮结束自己跑本机确定性 oracle 与多来源交叉，把实测证据注入下一轮；离线时用无草稿上下文的独立重推导+多数投票；附 verify_claims 取证工具。",
+  "version": "0.5.1",
+  "description": "最终正文显示前审核实际工具证据；缺少验收时自动退回补查，无法验证时明确报告未完成。保留分层断言检查与文档溯源。",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -43,16 +43,20 @@
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs",
+    "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs && node test/operations.test.mjs",
     "smoke": "node test/smoke.mjs",
     "audit": "node scripts/audit.mjs",
+    "host:unpack": "node scripts/unpack-host.mjs",
     "verify:independent": "node scripts/verify-independent.mjs",
+    "verify:host": "node test/host.test.mjs",
+    "verify:host-loop": "node test/host-loop.test.mjs && node test/host-loop.test.mjs --exhausted && node test/host-loop.test.mjs --reviewer-error && node test/host-loop.test.mjs --history",
+    "eval:review": "node eval/review-live.mjs",
     "eval:corpus": "node eval/corpus.mjs",
     "eval:extract": "node eval/extract.mjs",
     "eval:sample": "node eval/sample.mjs --per 3",
     "eval:score": "node eval/score.mjs --claims eval/out/claims-v1.json",
     "eval:delta": "node eval/delta.mjs",
-    "verify": "npm run check && npm run build && npm test && npm run smoke && npm run audit",
+    "verify": "npm run check && npm run build && npm test && npm run smoke && npm run audit && npm run verify:host && npm run verify:host-loop && npm run verify:independent",
     "install:local": "node scripts/install-local.mjs"
   },
   "keywords": [

@@ -37,6 +37,15 @@ export interface DoubtConfig {
   strictLabeling: boolean
   /** 交付文档（.md/.txt 等）被写出、但正文没有任何出处标注时，要求补一份逐步骤溯源表 */
   requireProvenance: boolean
+  /** 在 llm/stream 暂存最终回答，结合实际工具证据独立审核后才显示 */
+  requireOperationEvidence: boolean
+  /** 最终正文退回补查上限（每个宿主 turn，独立于旧 followup 预算） */
+  operationMaxRounds: number
+  /** 独立审核超时（ms，两次尝试各自计时）；超时不能放行未经审核的草稿 */
+  reviewTimeoutMs: number
+  /** 审核请求的字符上限。审核输入基本是中文正文与工具证据，字符量级≈token 量级，
+   *  120k 字符实测会让审核调用超过 60s 而超时（REVIEW_TIMEOUT → 回答被扣留） */
+  reviewMaxChars: number
   /** 本机查找 node_modules / package.json 的起点 */
   workspace: string
 
@@ -50,7 +59,7 @@ export interface DoubtConfig {
   minAnswerChars: number
   /** 单个检测器开关 */
   detectors: Record<string, boolean>
-  /** 本轮出现过这些工具调用，就视为「已经取过证」 */
+  /** @deprecated 仅为兼容旧配置保留；不参与放行或豁免判断 */
   verificationTools: string[]
   /** verify_claims 里禁止执行的程序名（小写、不含扩展名） */
   denyBinaries: string[]
@@ -84,6 +93,10 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   executeAnswerCommands: false,
   strictLabeling: true,
   requireProvenance: true,
+  requireOperationEvidence: true,
+  operationMaxRounds: 2,
+  reviewTimeoutMs: 120_000,
+  reviewMaxChars: 48_000,
   workspace: process.cwd(),
 
   maxRounds: 2,
@@ -166,6 +179,10 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
     executeAnswerCommands: bool(src.executeAnswerCommands, d.executeAnswerCommands),
     strictLabeling: bool(src.strictLabeling, d.strictLabeling),
     requireProvenance: bool(src.requireProvenance, d.requireProvenance),
+    requireOperationEvidence: bool(src.requireOperationEvidence, d.requireOperationEvidence),
+    operationMaxRounds: clampInt(src.operationMaxRounds, 0, 5, d.operationMaxRounds),
+    reviewTimeoutMs: clampInt(src.reviewTimeoutMs, 100, 180_000, d.reviewTimeoutMs),
+    reviewMaxChars: clampInt(src.reviewMaxChars, 1000, 500_000, d.reviewMaxChars),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
 
     maxRounds,

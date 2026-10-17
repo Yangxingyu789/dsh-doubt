@@ -6,7 +6,7 @@
 
 A model's first answer is often sloppy: the command was never run, the path was never confirmed, the version came from memory, the API signature was invented. So you ask "are you sure?" several times — and every time it actually checks, it finds a problem.
 
-`dsh-doubt` automates this, but **not** by asking the model to think again: after each turn the plugin **itself** verifies the answer's assertions against deterministic local sources (and, when online, multiple independent sources), then injects the **measured evidence** into the next turn.
+`dsh-doubt` buffers final text for independent review against human requests and actual tool evidence. Missing evidence sends the agent back through its normal tool loop; unavailable verification produces an explicit incomplete status. Existing post-turn checks and document provenance remain available.
 
 [中文](README.zh-CN.md) | English
 
@@ -25,7 +25,7 @@ This is the key v0.1 → v0.2 change, and it comes from measured results, not in
 | Yes/no verification questions | models tend to **agree regardless of correctness** | same paper |
 | Independent re-derivation + majority vote | 76.7 → 82.5 → 85.3 → 88.2 as samples grow; beats multi-agent debate at equal cost | [2310.01798 §4](https://arxiv.org/abs/2310.01798) |
 
-So: **"are you sure?" is the harmful kind of re-checking. Independent re-derivation with voting is the useful kind.** This plugin only does the latter.
+These are historical Tier C design references, not evidence of this version's effectiveness. Current independent review also compares drafts with tool evidence and requires empirical evaluation.
 
 ---
 
@@ -100,7 +100,7 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `enabled` | `true` | Master switch |
 | `verifyTool` | `true` | Register `verify_claims` |
 | `promptSection` | `true` | Inject the tiered-verification rules and hard bans |
-| `autoVerify` | `true` | Plugin runs Tier A/B itself and injects evidence |
+| `autoVerify` | `true` | Enable final review and post-turn Tier A/B/C |
 | `requireSources` | `2` | Independent agreeing sources needed when online |
 | `probeUrls` | 2 registries + arXiv | Connectivity probes |
 | `registryUrls` | npmmirror, npmjs | Tier B cross-check sources |
@@ -111,13 +111,17 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `executeAnswerCommands` | `false` | **Do not execute commands from the answer by default** — only check that the program exists |
 | `strictLabeling` | `true` | Unverifiable assertions must be labelled in the final answer |
 | `requireProvenance` | `true` | When a delivered document (`.md`/`.txt`) is written with no provenance section, ask for a step-by-step provenance table (see "Provenance gate"). Once per document; own budget of 4 per human turn, independent of `maxRounds` |
+| `requireOperationEvidence` | `true` | Independently review full final text and evidence before display, without keyword/length thresholds |
+| `operationMaxRounds` | `2` | Recovery budget per host turn (0–5); 0 reviews but does not retry |
+| `reviewTimeoutMs` | `120000` | Per-attempt review deadline (two attempts max); a timeout never releases the unreviewed draft, but it now retries once without optional history |
+| `reviewMaxChars` | `48000` | Review request bound in chars (≈ tokens for Chinese). History fills at most a quarter of it, so requests no longer pad to the limit and time out |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
 | `maxRounds` | `2` | Injection budget (reset by a new human message) |
 | `minScore` | `6` | Trigger threshold |
 | `maxFindings` | `8` | Max assertions listed |
-| `minAnswerChars` | `240` | Skip short answers |
+| `minAnswerChars` | `240` | Claim-level length threshold; does not exempt operation evidence |
 | `detectors` | `{}` | Per-detector on/off |
-| `verificationTools` | see source | Tool calls that count as "already verified" |
+| `verificationTools` | compatibility only | Deprecated; not used for approval or exemption |
 | `denyBinaries` | `rm/del/format/…` | Refused binaries |
 | `timeoutMs` | `15000` | Per-check timeout |
 | `language` | `auto` | Injected text language |
@@ -173,6 +177,28 @@ Measured reply, with provenance:
 
 ---
 
+## Operation evidence gate
+
+Previously a tool name exempted the entire turn, and short/low-score/unjudgeable answers were silent. Document provenance ran before those exemptions.
+
+The gate now buffers final text at `llm/stream` and sends human requests, the draft, and current-turn tool arguments/results/chronology to a fresh tool-less reviewer using the same provider/model. Author instructions and reasoning are not inherited.
+
+1. Review target, relevance, contradictions, post-action state and the user's acceptance criteria. README content, False, or a write receipt cannot establish a repair. User-facing tool-ID citations are not required.
+2. Approval must partition the entire draft and quote actual call results. Code validates coverage, grounding and post-action timing; semantic relevance still depends on the model.
+3. Rejection substitutes a `doubt_review` receipt. The host continues the same turn for actual checks within the original authorization. Honest incomplete answers are allowed; reviewer suggestions are themselves unverified.
+4. Reviewer errors, timeouts, invalid JSON/contracts and oversized material are review-service failures, not evidence gaps or task failures. They expose a safe error code plus the validator's reason, never inject an author retry, and suppress legacy post-turn checks. A malformed JSON reply or a contract violation (`INVALID_REVIEW`) is retried once with the validator's exact complaint, because a formatting mistake is not a verdict on the user's task.
+5. **The review never destroys the answer.** A rejection inside the retry budget still returns a `doubt_review` receipt and continues the loop, but the terminal fallback — retry budget exhausted, reviewer service failure, or an unsupported replay protocol — **releases the draft with an explicit trailing banner** ("以上草稿未经完整审核" + the unreviewed issues or the failure code/reason). Earlier versions withheld the draft, which in practice swallowed otherwise useful answers.
+6. The reviewer covers numbered draft parts instead of copying the whole answer, and parts are grouped into ~400-character units (one part per source line made long answers emit one JSON segment per line). Token truncation triggers one internal retry with a larger output budget (12000 to 24000 tokens) that also drops optional history, with a separate configured deadline per attempt and no user-tool execution. A mixed `partIds`/`text` representation is accepted when the concatenated text still covers the draft; numeric-string and comma-joined `partIds` are accepted too.
+7. The whole packet is budgeted against `reviewMaxChars`, current-turn tool records included. Records stay whole while they fit; oversized ones are clipped with an explicit truncation marker plus `truncated`/`truncatedCalls`, so a busy turn can no longer be withheld as `INPUT_LIMIT`. Optional history is capped at a quarter of the budget, so ordinary requests stay well below the ceiling instead of being padded to it; if a review still times out, it is retried once without that history.
+
+**Cost and limits:** each final answer adds a model call and latency, including short answers; truncation can add one more call. Review usage is not currently added to the original answer's token statistics. Intermediate tool-call text is withheld while tools continue through normal host execution/approval; final text is reviewed. Files already written use the separate document provenance rules. DeepSeek reasoning/signatures are retained for protocol continuation, not approved as final text. PTC-only sessions without the receipt tool and unsupported reasoning replay protocols cannot recover automatically. Evidence is textual and current-turn only, not image inspection or historical task-state management. Reviewer outages still withhold final drafts, but do not ask the author to repeat operations. Review can miss errors and reject valid answers; this is not a hallucination guarantee.
+
+Implementation: [src/completion.ts](src/completion.ts), [src/operations.ts](src/operations.ts). Offline contracts: `test/operations.test.mjs`. Real host services/loop with scripted models: `test/host.test.mjs`, `test/host-loop.test.mjs`. Separate live synthetic-evidence evaluation: `eval/review-live.mjs`; transport failure is ERROR, not successful rejection.
+
+Local 0.5.1 validation on 2026-10-17: 23 synthetic cases across three runs through real LlmRuntime and deepseek-flash matched expected verdicts (14 rejections, 9 approvals). The same long answer reproduced the old 0.5.0 generic failure with a `max-tokens` finish and passed on the new version. Actual AgentLoop UI frames withheld the premature tool-stage claim, and a reviewer SERVER failure caused no author retry. This is not a production error-rate estimate or proof that the pictured Windows issues were repaired. Update installed copies and restart DSH to load changes; repository tests alone do not establish desktop activation.
+
+A real AgentLoop fault-injection trial also confirmed that a live reviewer rejected an injected premature success draft, after which a live author independently read the temporary configuration and produced an approved answer without a second human message. The initial failure is injected; no real application is modified. Reproduce with `test/host-loop.test.mjs --app <app-dir> --live --account-home <DSH_HOME> --model deepseek-flash`.
+
 ## Provenance gate
 
 Claim-level verification is nearly useless on prose documents: measured on a real 46k-character
@@ -198,10 +224,10 @@ produced **1 ask before** the provenance appendix existed and **0 after**.
 
 ## Noise guards
 
-1. **Silent unless there is a positive refutation**: only `refuted`, `inconclusive` with contradicting sources, or a Tier C vote split trigger an injection. Plain "couldn't verify" stays **silent** — the v0.2 rule ("speak unless everything is confirmed") measured as injecting on 100% of answers, i.e. pure noise.
-2. **Already verified → left alone.**
-3. **Short answers skipped**; **round budget** `maxRounds`, reset by a new human message.
-4. **State guard**: nothing injected while `running` or the inbox is busy.
+1. **Claim-level checks stay silent without a positive refutation**: only `refuted`, `inconclusive` with contradicting sources, or a Tier C vote split trigger an injection. Operation evidence and document provenance have separate triggers.
+2. **Tool use is not verification.** A tool name no longer exempts an entire turn; failures, unrelated reads and pre-change checks cannot prove completion.
+3. **Short answers skip claim-level scanning only.** Final review resets per host turn; legacy followup budgets reset on human input.
+4. **State guard**: post-turn checks wait for idle; final review runs inside the current request.
 
 ---
 
@@ -213,7 +239,7 @@ produced **1 ask before** the provenance appendix existed and **0 after**.
 - **Timeout**: 15 s default, then `SIGKILL`, reported honestly.
 - **Output cap**: 4000 characters.
 - **`expr` runs in an empty `vm` context**: no `require`, `process` or `globalThis`.
-- **Network behaviour**: only GETs to the public registries listed in `registryUrls`. **Note**: the URL path contains the **package name extracted from the answer** (`/registry/<pkg>`), so package names do leave the machine; nothing else is transmitted. Connectivity probes hit `probeUrls` with no parameters. Offline mode never touches the network.
+- **Network behaviour**: registry queries send extracted package names; probes use `probeUrls`. Default final review additionally sends human requests, drafts and current-turn tool arguments/text results to the current model provider and consumes model usage. Disable `requireOperationEvidence` to stop this call. Unavailable review reports incomplete. Tier C also uses host model capabilities; registry connectivity status is not a global no-network switch.
 
 It does **not** go through DSH's sandbox/approval chain — a known plugin-layer limitation. Tighten `denyBinaries`, or set `verifyTool: false`.
 
@@ -224,8 +250,14 @@ It does **not** go through DSH's sandbox/approval chain — a known plugin-layer
 ```bash
 pnpm install            # online
 pnpm install --offline  # with a warm pnpm store
-npm run verify          # typecheck + build + 6 test suites + smoke + 13 repository checks
-npm run verify:independent  # check the claims against oracles that are NOT this project
+npm run host:unpack     # unpack the installed app's app.asar for the host oracles (auto-detects the install; --app <dir> overrides)
+npm run verify          # typecheck + build + 7 test suites + smoke + 13 repository checks + host suites + independent oracles
+# The two host suites and the independent oracles need the installed desktop app.
+# They auto-detect it and print SKIP (exit 0) when it is absent instead of failing.
+npm run verify:host
+npm run verify:host-loop
+# Optional live review; consumes selected account usage, synthetic cases only:
+npm run eval:review -- --app <DSH-install-directory> --account-home <DSH_HOME> --model deepseek-flash
 ```
 
 `npm run verify:independent` exists because "the tests pass" is weak evidence when the tests
@@ -240,13 +272,17 @@ were written together with the code. It judges the project only with outside ref
 | no `expr` payload can kill or hang the host | each payload in its own child process |
 | the silence-only guards never invent a refutation | a genuinely local missing path must still be refuted |
 
-Items needing the unpacked host app report `SKIP` with the reason when it is absent (set
-`DSH_ASAR_DIR` to point at it).
+Items needing the unpacked host app report `SKIP` with the reason when it is absent, **stale or
+incomplete**: run `npm run host:unpack` after a desktop update, or point `DSH_ASAR_DIR` at an
+existing unpack. A half-extracted asar is reported as `SKIP`, never as `FAIL`, because a missing
+module in the host copy says nothing about this plugin.
 
 | File | Responsibility |
 |---|---|
 | [src/index.ts](src/index.ts) | entry: tool, prompt section, evidence loop, connectivity |
 | [src/scanner.ts](src/scanner.ts) | risk scanner (pure) |
+| [src/completion.ts](src/completion.ts) | Buffered review, evidence contract, receipts and fail-closed handling |
+| [src/operations.ts](src/operations.ts) | Tool-call/result correlation and execution states |
 | [src/claims.ts](src/claims.ts) | claims → executable checks (safe parsing) |
 | [src/local.ts](src/local.ts) | Tier A local oracles |
 | [src/evidence.ts](src/evidence.ts) | Tier A/B orchestration + verdict rules |
@@ -308,8 +344,8 @@ than quietly dropped.
 
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
-| 1 | 6 test suites + smoke, plus 13 repository checks | **sourced** | `npm run verify` — measured exit 0; `package.json`'s `test` script chains exactly 6 `node test/*.test.mjs` |
-| 2 | Version 0.4.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.4.0` |
+| 1 | 7 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 7 `node test/*.test.mjs`; rerun with `npm run verify` |
+| 2 | Version 0.5.1, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.5.1` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |
@@ -327,6 +363,20 @@ than quietly dropped.
 | 17 | The clone URL in this README points at `github.com/Yangxingyu789/dsh-doubt` | **sourced** | the placeholder `<你的GitHub账号>` was replaced in exactly 5 places (README.md 1, README.zh-CN.md 1, package.json 3) and 0 remain; `git remote -v` shows the same URL for `origin` |
 | 18 | That repository exists and was **private** when this table was written | **sourced** | loaded with this machine's logged-in browser session: HTTP 200, title `Yangxingyu789/dsh-doubt: …`, page carries `svg.octicon-lock` and the word `Private`, and no `Public`; independently, anonymous `GET https://api.github.com/repos/Yangxingyu789/dsh-doubt` returns **404** |
 | 19 | It is still an empty repository (nothing has been pushed) | **sourced** | the same page renders GitHub's empty-repository onboarding (`…or push an existing repository`); the local commit `7e3d42b` exists but a push has not completed |
+| 20 | `npm run verify` covers the host suites and the independent oracles, not just typecheck/tests/audit | **sourced** | `package.json`'s `verify` script now chains `verify:host && verify:host-loop && verify:independent`; the previous revision (`git show HEAD:package.json`) stopped at `npm run audit`, which is why all three could be red while `verify` stayed green |
+| 21 | The host suites locate the installed desktop app without `--app` | **sourced** | `scripts/host-app.mjs` probes `--app`, `DSH_APP_DIR`, the running `DeepSeek Harness` process and the standard install locations; measured here: `npm run verify:host` and `npm run verify:host-loop` passed with no flag after this change |
+| 22 | A stale or half-extracted host unpack is reported as `SKIP`, never `FAIL` | **sourced** | `scripts/verify-independent.mjs` `hostUnpackProblem()` checks the CLI, `dsh-app-boot/package.json` and the `.unpacked.json` marker against the current `app.asar`; the marker is written by `scripts/unpack-host.mjs` (`npm run host:unpack`) |
+| 23 | The unpack found on this machine was stale and incomplete: 87 of 287 packages had no `package.json` | **sourced (measured before re-unpacking; that state no longer exists)** | measured: `dsh-asar` dated 2026-10-16 21:01 while `app.asar` was 2026-10-17 12:49, and 87/287 packages lacked `package.json`, which produced `ERR_MODULE_NOT_FOUND` for `dsh-app-boot/index.js`. `npm run host:unpack` then wrote 16711 packed + 1583 unpacked files (18294 = the asar header's own count) and the oracle went to 6 PASS / 0 FAIL / 0 SKIP |
+| 24 | A busy turn used to exceed `reviewMaxChars` and the guard withheld the whole final answer as `INPUT_LIMIT` | **sourced (measured on this machine's own session log)** | rebuilt the packet with the plugin's own `buildReviewPacket` from that session's tool events: turn 6 had **77 calls / 209,267 chars** of result text and produced a **216,921-char** payload against the 120,000 limit; the same turn now produces **119,735** chars |
+| 25 | Oversized tool results are clipped with an explicit marker, never silently dropped, and every current-turn call is kept | **sourced (source + tests)** | `src/completion.ts` `clipRecord()` appends `[dsh-doubt] result truncated: kept N of M chars` and sets `truncated`; `test/operations.test.mjs` flood case (77 × 2,700 chars) asserts payload ≤ limit, all 77 records kept, `truncatedCalls > 0`, and that a quote from the retained prefix still validates |
+| 26 | `npm run verify` now runs all four host-loop scenarios | **sourced** | `package.json` `verify:host-loop` chains default, `--exhausted`, `--reviewer-error` and `--history`; measured: `--exhausted` failed before the notice fix (assertion expected 自动取证轮数已用尽) and all four pass after it |
+| 27 | Optional history padded most review requests to ~119.7k chars | **sourced (measured)** | rebuilt every turn with the plugin's own `buildReviewPacket` from this machine's session log: turns 1–7 produced 81,757 / 119,724 / 119,570 / 119,738 / 119,713 / 119,706 / 119,668 chars against the then-current 120,000 limit |
+| 28 | That padding made review calls exceed the 60 s deadline, so the answer was withheld as `REVIEW_TIMEOUT` | **sourced** | the guard's own notice on the affected turn read `插件审核服务出错（REVIEW_TIMEOUT）`; the fix sets `reviewMaxChars` to 48,000, caps history at a quarter of the budget, raises the deadline to 120,000 ms and retries once without history |
+| 29 | The history cap and the timeout retry are covered by tests | **sourced (by tests)** | `test/operations.test.mjs`: the 120-record history case asserts payload < 80% of the 48,000 budget while current-turn evidence still wins; the timeout case asserts exactly one cheaper retry and that the draft is then released |
+| 30 | The reviewer's output budget was exhausted twice (`max-tokens`) on a long answer, so the draft was withheld | **sourced (measured on this machine's session log)** | this session's own log records `插件审核服务出错（max-tokens）` on turn 8; the same log records `INPUT_LIMIT` on turn 6 and `REVIEW_TIMEOUT` on turn 7 |
+| 31 | Draft parts are grouped into ~400-char units and the truncation retry uses 12000→24000 tokens and drops history | **sourced (source + tests)** | `src/completion.ts` `draftParts()` grouping and the `finish === 'max-tokens'` retry branch; `test/operations.test.mjs` asserts 200 short lines merge into ≤30 parts with the exact draft preserved, and that the retry sees 24000 tokens with only current-turn records |
+| 32 | `INVALID_REVIEW` is raised only by `validateReview`'s `fail()` branches, and it occurred once in this session | **sourced (source + session log)** | `src/completion.ts` `fail()` returns `failure.code = 'INVALID_REVIEW'`; this session's log records exactly one occurrence: turn 12 at 17:09:34 local |
+| 33 | A contract violation or malformed JSON is now retried once with the validator's reason, mixed `partIds`/`text` is accepted when text coverage matches, and the notice carries the reason | **sourced (source + tests)** | `src/completion.ts` `repair()`/`repairNote` and the relaxed coverage branch; `test/operations.test.mjs` asserts the repair retry carries "rejected by the output validator" and `partIds 0..0`, that invalid JSON is retried, that mixed representation approves, and that `{partIds:[0,2]}` reports a `partId` detail |
 
 If you want items 8, 10, 11 or 12 to become sourced, the honest options are: (a) commit a
 **sanitised** corpus (session IDs and paths stripped) so the numbers can be rebuilt, or (b)

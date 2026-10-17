@@ -1,7 +1,8 @@
 /**
  * dsh-doubt —— 把「你确定吗」变成插件的自动取证动作。
  *
- * 四件事：
+ * 最终正文显示前独立审核工具证据；证据不足则通过宿主工具循环继续取证。
+ * 另外保留：
  * 1. verify_claims 工具：模型提交断言 + 可执行检查，插件在本机真跑并回填判定。
  * 2. 系统提示词段：分层取证策略 + 硬性禁令（禁止凭记忆写编号/路径/API 名）。
  * 3. 自动取证循环：turn 结束后插件**自己**跑 Tier A/B，把实测证据注入，而不是要求模型「再检查一遍」。
@@ -14,9 +15,10 @@ import { installDoubtLoop } from './loop.js'
 import { NetProbe } from './network.js'
 import { promptSection } from './prompts.js'
 import { buildVerifyTool } from './tool.js'
+import { createCompletionGuard } from './completion.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.3.0'
+export const version = '0.5.1'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'
@@ -83,6 +85,18 @@ export function apply(ctx: Context, config: unknown): void {
   }
 
   if (cfg.autoVerify) {
+    let completionGuard: ReturnType<typeof createCompletionGuard> | undefined
+    if (cfg.requireOperationEvidence) {
+      ctx.inject(['llm', 'tools'], (guardCtx: Context) => {
+        const services = guardCtx as any
+        const guard = createCompletionGuard(getConfig, log)
+        completionGuard = guard
+        services.tools.register(guard.reviewTool)
+        const installed = guard.install(guardCtx, services.llm)
+        services.effect(() => () => installed.dispose())
+        log('已注册最终输出审核（llm/stream）：证据审核未通过时继续取证，原草稿不显示')
+      })
+    }
     // Tier C 在**运行期**才用 ctx.subagents，同样不能捕获外层 ctx，否则每次评估都会抛。
     // 这里把注入后的上下文存下来，服务不存在时回调不会触发 → 如实降级为「无子代理能力」。
     let subagentCtx: Context | null = null
@@ -92,6 +106,8 @@ export function apply(ctx: Context, config: unknown): void {
       getConfig,
       log,
       probe,
+      skipTurn: (agent, turn) => completionGuard?.failedTurn(agent, turn) ?? false,
+      reviewedTurn: (agent, turn) => completionGuard?.reviewedTurn(agent, turn) ?? false,
       factoredHost: (agent) => {
         const subagents = (subagentCtx as unknown as { subagents?: { start?: unknown } } | null)?.subagents
         if (!subagents || typeof subagents.start !== 'function') return null
@@ -99,7 +115,7 @@ export function apply(ctx: Context, config: unknown): void {
       },
     })
     const tier = cfg.factored ? 'A+B+C' : 'A+B'
-    log(`自动取证已开启（Tier ${tier}）：requireSources=${cfg.requireSources} maxRounds=${cfg.maxRounds} minScore=${cfg.minScore} executeAnswerCommands=${cfg.executeAnswerCommands}`)
+    log(`自动取证已开启（Tier ${tier}）：requireSources=${cfg.requireSources} maxRounds=${cfg.maxRounds} minScore=${cfg.minScore} executeAnswerCommands=${cfg.executeAnswerCommands} requireOperationEvidence=${cfg.requireOperationEvidence} operationMaxRounds=${cfg.operationMaxRounds}`)
   }
 
   log(`dsh-doubt v${version} 已加载（verifyTool=${cfg.verifyTool}, promptSection=${cfg.promptSection}, autoVerify=${cfg.autoVerify}, factored=${cfg.factored}）`)

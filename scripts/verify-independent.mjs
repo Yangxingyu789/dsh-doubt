@@ -46,9 +46,32 @@ const record = (name, status, detail) => {
 }
 const lib = (p) => import(new URL(`../lib/${p}`, import.meta.url).href)
 
+// An incomplete or stale unpack of the host must SKIP, never FAIL: "module not found"
+// from a half-extracted asar says nothing about this plugin. The marker file is written
+// by scripts/unpack-host.mjs so staleness is detectable instead of guessed.
+const UNPACK_ROOT = resolve(ASAR, '..')
+const UNPACK_MARKER = join(UNPACK_ROOT, '.unpacked.json')
+function hostUnpackProblem() {
+  if (!existsSync(CLI)) return `host runtime not unpacked at ${ASAR} (set DSH_ASAR_DIR, or run: npm run host:unpack)`
+  if (!existsSync(join(ASAR, 'node_modules/@deepseek-ai/dsh-app-boot/package.json')))
+    return `unpacked host is INCOMPLETE (packages lost their package.json); run: npm run host:unpack`
+  if (existsSync(UNPACK_MARKER)) {
+    try {
+      const marker = JSON.parse(readFileSync(UNPACK_MARKER, 'utf8'))
+      if (marker.asar && existsSync(marker.asar)) {
+        const st = statSync(marker.asar)
+        if (st.size !== marker.asarSize || Math.abs(st.mtimeMs - marker.asarMtimeMs) > 2000)
+          return `unpacked host is STALE (app.asar changed after it was unpacked); run: npm run host:unpack`
+      }
+    } catch { /* hand-made unpack without a marker: the completeness probe above still applies */ }
+  }
+  return null
+}
+const hostProblem = hostUnpackProblem()
+
 // ── 1. the real DSH CLI composes the plugin row ───────────────────────────────
-if (!existsSync(CLI)) {
-  record('DSH CLI inserts the plugin row', 'SKIP', `host app not unpacked at ${ASAR} (set DSH_ASAR_DIR)`)
+if (hostProblem) {
+  record('DSH CLI inserts the plugin row', 'SKIP', hostProblem)
 } else {
   const home = mkdtempSync(join(tmpdir(), 'dsh-selfcheck-'))
   try {
@@ -67,7 +90,7 @@ if (!existsSync(CLI)) {
     }
     const withInsert = run()
     record('DSH CLI inserts the plugin row', withInsert.includes('- id: dsh-doubt') ? 'PASS' : 'FAIL',
-      withInsert.split('\n').filter((l) => /dsh-doubt|not found/.test(l)).slice(0, 2).join(' | ') || '(no dsh-doubt line)')
+      withInsert.split('\n').filter((l) => /dsh-doubt|not found|Error:|ERR_MODULE_NOT_FOUND/.test(l)).slice(0, 2).join(' | ') || '(no dsh-doubt line)')
   } catch (e) {
     record('DSH CLI inserts the plugin row', 'FAIL', String(e).slice(0, 200))
   } finally {
@@ -78,7 +101,9 @@ if (!existsSync(CLI)) {
 // ── 2. semver agreement (reference implementation) ────────────────────────────
 {
   const semverPath = join(ASAR, 'node_modules/semver')
-  if (!existsSync(semverPath)) {
+  if (hostProblem) {
+    record('rangeSatisfied agrees with node-semver', 'SKIP', hostProblem)
+  } else if (!existsSync(semverPath)) {
     record('rangeSatisfied agrees with node-semver', 'SKIP', `semver not found at ${semverPath}`)
   } else {
     const semver = createRequire(join(ASAR, 'x.js'))('semver')
@@ -152,7 +177,8 @@ if (!existsSync(SESSIONS)) {
   const { installDoubtLoop } = await lib('loop.js')
   const { normalizeConfig } = await lib('config.js')
   const { Context } = await import(new URL('../node_modules/@deepseek-ai/cordis/lib/index.js', import.meta.url).href)
-  const cfg = normalizeConfig({})
+  // Isolate provenance: operation evidence has a separate contract and suite.
+  const cfg = normalizeConfig({ requireOperationEvidence: false })
   let docs = 0, asks = 0, codeTurns = 0, codeAsks = 0
   const files = walk(SESSIONS).map((f) => ({ f, m: statSync(f).mtimeMs })).sort((a, b) => b.m - a.m).slice(0, 4)
   for (const { f } of files) {

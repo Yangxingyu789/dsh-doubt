@@ -1,5 +1,34 @@
 # 更新日志
 
+## 0.5.1（审核故障与任务缺证分开处理）
+
+- 修复审核器错误被当作证据缺口、耗尽主模型补查次数的缺陷。保留安全的接口错误码；审核故障不发补查回执，也不启动旧版回合后检查。
+- 带工具调用的流保留工具和思考协议，移除尚未审核的可见正文；覆盖此前“工具继续执行时先显示确定结论”的漏洞。重新排列 DeepSeek 回放元数据。
+- 审核器用段落编号覆盖全文，不再要求复写长回答；只有审核输出达到 token 上限时，内部增加输出预算重试一次，不重新执行用户操作。
+- 区分当前问题和历史请求，避免把全部历史要求强加给一次追问。
+- 添加接口错误、长回答、截断、工具阶段显示及真实宿主 UI 流回归；模型评测改用实际 LlmRuntime 调用链。
+- 0.5.0 的现场记录只保留笼统错误，无法追溯当时接口故障的具体原因；本次没有把推测的超时或截断当成已确认根因。
+- 校验链补漏：`npm run verify` 此前**不包含** `verify:host`、`verify:host-loop`、`verify:independent`，所以这三项都红时 `verify` 仍然全绿。现在 `verify` 串上这三项；宿主测试自动定位已安装应用（`--app` / `DSH_APP_DIR` / 运行中进程 / 常见安装位置），找不到时打印 `SKIP` 并以 0 退出。
+- 新增 `npm run host:unpack`（`scripts/unpack-host.mjs`）：按 asar 头解析并解包 `resources/app.asar`，写入 `.unpacked.json` 标记（源 asar 大小/修改时间）。`verify:independent` 据此把**陈旧或不完整**的解包报成 `SKIP`（附修复命令）而不是 `FAIL`——此前的解包取自旧版本、且丢了 87 个包的 `package.json`，导致 `ERR_MODULE_NOT_FOUND` 被误当成插件缺陷。
+- 修复审核输入预算：`buildReviewPacket` 此前只对**历史**记录做字符预算，当前轮记录全量塞入，于是工具输出多的一轮必然超过 `reviewMaxChars` → `INPUT_LIMIT` → 整段最终回答被扣留。实测本机第 6 轮（77 次工具调用，当前轮证据 209,267 字符）的 payload 是 **216,921** 字符（上限 120,000）；修复后同一轮为 **119,735** 字符，77 条记录全部保留。超长结果按份额截短并写入显式截断标记与 `truncated`/`truncatedCalls`，不是静默丢弃；草稿本身超限时仍按原设计失败关闭。
+- 补测：`verify:host-loop` 以前只跑默认场景，`--exhausted` / `--reviewer-error` / `--history` 从未进入校验链，其中 `--exhausted` 因提示文案不一致（期望「自动取证轮数已用尽」，实际「已停止自动补查」）长期是红的。现在四个场景都进 `npm run verify`，文案统一为两者都包含的措辞。
+- 修复审核超时：`buildReviewPacket` 会把**历史**记录一路填到预算上限，实测 7 轮里有 6 轮的 payload 落在 **119.5k–119.7k** 字符（上限 120,000），而审核输入基本是中文（字符量级≈token 量级），于是单次审核超过 60s → `REVIEW_TIMEOUT` → 回答被扣留。现在 `reviewMaxChars` 默认 **48000**、`reviewTimeoutMs` 默认 **120000**，历史记录最多只占预算的 1/4；审核超时后还会**去掉历史重试一次**，不再直接吞掉答案。
+- 修复审核输出超限（`max-tokens`）：`draftParts` 此前**一行一段**，长回答会拆出上百段，审核器为覆盖全文要输出大量 JSON，6000/12000 的预算两次都撑爆 → 回答被扣留。现在段落按 ~400 字符分组，首轮 `maxTokens` 12000、重试 24000，且重试会去掉可选历史；审核指令里也明确要求输出尽量少的段、不复述正文、不叙述分析过程。
+- 修复 `INVALID_REVIEW`：它全部来自 `validateReview` 的 `fail()`（分段为空/编号不连续/正文覆盖不一致/引文不在原文里等），而 `reviewPacket` **只在 `max-tokens` 时重试**，于是一次格式错误就把整段回答扣留。现在：①非法 JSON 与契约不满足都会**带着校验器原话重试一次**；②`partIds` 与 `text` 混用但拼接后仍覆盖草稿时予以接受；③错误提示带上具体原因（例如「收到 2 个 partId，应为 0..0」），不再只有一个笼统错误码。实测证据：会话日志 17:09:34 记录 turn 12 = `INVALID_REVIEW`。
+- **改变终局策略（按用户决定）：审核永不吞掉回答。** 补查预算用尽、审核服务故障、回放协议不支持时，不再扣留草稿，而是**照常放行并在末尾附一条「以上草稿未经完整审核」横幅**（列出未核实意见或故障码/原因）；预算内的驳回仍走 `doubt_review` 回执继续取证。动机：本会话先后出现 `INPUT_LIMIT`(15:53)、`REVIEW_TIMEOUT`(16:09)、`max-tokens`(16:31)、`INVALID_REVIEW`(17:09) 四次终局扣留，把正常回答整段吞掉。实现：`src/completion.ts` 的 `releasedDraft()`；`test/operations.test.mjs` 与 `test/host-loop.test.mjs` 的对应用例已改为断言「草稿必须出现且带横幅」。
+
+## 0.5.0（最终正文显示前审核）
+
+- 取消“调用过 bash/read 等工具就豁免整轮”的规则。
+- 新增 llm/stream 暂存、独立模型证据审核、全文覆盖/原文引用/操作后时序契约；无需用户正文插入工具 ID。
+- 不通过时使用 doubt_review 回执继续当前宿主 turn；审核失败和预算耗尽明确报告未完成。
+- 保留 DeepSeek 思考回放所需内容/签名；未知回放协议和未暴露回执的 PTC-only 模式报告能力不足。
+- 修正诚实的未完成说明被误拦、验收 actionIds 与 check 混淆、失败输出不能用于如实报错，以及同步异常/超时处理。
+- 防止旧 idle 循环并发、取消轮追问与异步结果污染新轮。
+- 新增离线审核契约、真实宿主运行时/AgentLoop 集成测试、18 项真实模型合成证据评测。18 项在修正后一次运行符合预期；不代表生产错误率。
+- 真实模型继续执行测试发现并修复了思考回放丢失、流式协议开销误计为正文长度两个问题；故障注入后已实测自动回读临时配置并收尾，无需人工追问。
+- 每次最终回答新增一次模型调用/延迟；审核用量尚未并入原回答统计。中间文字、磁盘文档、图像验收和完整历史任务状态不在此显示闸的保证范围内。
+
 ## 0.4.0（独立验证驱动的运行期修复 + 溯源闸）
 
 这一轮的每个结论都由**不继承作者推理**的独立验证者复核过：一个专门证伪，一个做变异测试  
@@ -99,6 +128,20 @@
 | 23 | 工作区新出现的 `yarn.lock`（2026-10-16 22:16:18 创建、1925 字节、yarn v1 格式，内容为本项目那几个依赖）    | **无依据（来源未核实）**             | 本仓库用 pnpm（`pnpm-lock.yaml` 在版本库内）；它不是本轮任何命令的产物（本轮只跑了 `npm run check/build/test/smoke/audit`、`git`、Playwright 与 Pillow）。我没有删除、也没有提交它，来源需仓库所有者确认                                                                                                                     |
 | 24 | 扫描器报的 `(version) v24.21.0` / `Version 0.15`                                 | **无依据（不是本轮文档里的断言）**        | 在这三份文档里搜不到这两个串。`v24.21.0` 是本会话 `node -v` 的实测输出，只出现在对话里；`Version 0.15` 来自 `dsh-plugin.json` 的 `manifestVersion`（实测存在，本轮未改）。按溯源闸要求**保留、不删**                                                                                                                          |
 | 25 | 扫描器报的 `(version) 5.9.3`                                                      | 有出处                       | 文档里的 `5.9.3` 是本轮之前就有的内容，指本机 `node_modules/typescript` 版本；`npm run verify` 实测输出「typescript=5.9.3，2 个独立来源」                                                                                                                                                            |
+| 26 | `npm run verify` 此前不含 `verify:host` / `verify:host-loop` / `verify:independent` | 有出处 | 改前后各看一次 `package.json`：`git show HEAD:package.json` 的 `verify` 止于 `npm run audit`；改后串上三项。这解释了「三项全红而 `verify` 全绿」 |
+| 27 | 宿主测试能自动定位桌面应用，缺应用时 SKIP 且退出码 0 | 有出处 | `scripts/host-app.mjs`（探测顺序：`--app` → `DSH_APP_DIR` → 运行中进程 → 常见安装位置）；本机实测 `npm run verify:host`、`verify:host-loop` 不带参数均 PASS |
+| 28 | `npm run host:unpack` 解包 `resources/app.asar` 并写 `.unpacked.json` 标记 | 有出处 | `scripts/unpack-host.mjs`；本机实测输出 `16711 packed + 1583 unpacked`，合计 18294，与 asar 头自报的文件数一致 |
+| 29 | 改动前的解包陈旧且不完整（87/287 个包缺 `package.json`），使 `verify:independent` 第 1 项以 `ERR_MODULE_NOT_FOUND` FAIL | 有出处（重新解包前实测；该状态已不存在） | 实测 `dsh-asar` 2026-10-16 21:01 vs `app.asar` 2026-10-17 12:49；87/287 缺 `package.json`；重新解包后该轮检查为 **6 PASS / 0 FAIL / 0 SKIP**，第 1 项输出 `- id: dsh-doubt` |
+| 30 | 工具输出多的一轮曾超过 `reviewMaxChars`，导致整段最终回答被 `INPUT_LIMIT` 扣留 | 有出处（本机会话实测） | 用插件自己的 `buildReviewPacket` 从本机会话事件复算：第 6 轮 77 次调用、当前轮证据 209,267 字符，payload = 216,921 字符（上限 120,000）；修复后同一轮 = 119,735 字符 |
+| 31 | 超长结果改为按份额截短、带显式标记，当前轮记录全部保留 | 有出处 | `src/completion.ts` 的 `clipRecord()`；`test/operations.test.mjs` flood 回归（77×2,700 字符）断言 payload ≤ 上限、77 条全在、`truncatedCalls > 0`、保留前缀引文可通过 `validateReview` |
+| 32 | `verify:host-loop` 现在跑四种场景；`--exhausted` 此前是红的 | 有出处 | `package.json` 脚本实测；修复前 `--exhausted` 报 `AssertionError: The input did not match /自动取证轮数已用尽/`（实际输出「已停止自动补查」），修复后四种场景退出码均为 0 |
+| 33 | 审核 payload 会被历史记录填到接近上限（7 轮里 6 轮 ≈119.5k–119.7k 字符） | 有出处（本机会话实测） | 用插件自己的 `buildReviewPacket` 逐轮复算：turn 1/2/3/4/5/6/7 = 81,757 / 119,724 / 119,570 / 119,738 / 119,713 / 119,706 / 119,668 字符（当时上限 120,000） |
+| 34 | 这使审核调用超时（`REVIEW_TIMEOUT`）并扣留回答；现改为 48000 字符上限 + 历史占 1/4 + 120s 超时 + 超时去历史重试 | 有出处（源码 + 测试） | `src/config.ts` 默认值与 `cordis.patch.yml`；`src/completion.ts` 的 `historyLeft` 上限与 `guardStream` 重试分支；`test/operations.test.mjs` 断言 payload < 48000×0.8、当前轮证据仍优先、超时后恰好重试一次并放行 |
+| 35 | 文档里的审核条目与配置表已同步新默认值 | 有出处 | `README.md` / `README.zh-CN.md` 的配置表与「操作取证闸」第 6 条；`cordis.patch.yml` 中 `reviewTimeoutMs: 120000`、`reviewMaxChars: 48000` |
+| 36 | 长回答时审核器输出预算两次耗尽（`max-tokens`）导致草稿被扣留 | 有出处（本机会话日志实测） | 本会话日志：turn 8 = `插件审核服务出错（max-tokens）`；同一份日志里 turn 6 = `INPUT_LIMIT`、turn 7 = `REVIEW_TIMEOUT` |
+| 37 | 段落改为 ~400 字符分组，重试预算 12000→24000 并去掉历史 | 有出处（源码 + 测试） | `src/completion.ts` 的 `draftParts()` 与 `maxTokens: retry ? 24000 : 12000`、重试分支；`test/operations.test.mjs` 断言 200 行 → ≤30 段且拼回一致、重试时只剩当前轮记录 |
+| 38 | `INVALID_REVIEW` 只出自 `validateReview` 的 `fail()`，本会话出现一次 | 有出处（源码 + 会话日志） | `src/completion.ts` 的 `fail()`；会话日志 turn 12 = `INVALID_REVIEW`，本地时间 17:09:34 |
+| 39 | 契约/JSON 错误带原因重试一次、混用分段可接受、提示带具体原因 | 有出处（源码 + 测试） | `src/completion.ts` 的 `repair()` 与覆盖分支；`test/operations.test.mjs` 的四条新断言（重试带校验器原话、非法 JSON 重试、混用放行、编号错误报细节） |
 
 **未能核对的**：第 10、11 条依赖的原始回放脚本已删除，无法重跑；第 12、13、24 条属于扫描器的抽取噪声，不是可核验的技术断言；第 23 条的 `yarn.lock` 来源未核实（未删、未提交）。以上均按溯源闸要求显式标注、保留原样。
 

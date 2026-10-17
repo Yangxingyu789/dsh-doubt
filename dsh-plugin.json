@@ -2,7 +2,7 @@
   "manifestVersion": "0.15",
   "id": "dsh-doubt",
   "name": "dsh-doubt",
-  "version": "0.4.0",
+  "version": "0.5.1",
   "license": "MIT",
   "facets": {
     "host": {
@@ -32,14 +32,14 @@
     {
       "name": "dsh-doubt.net.fetch",
       "scope": "network",
-      "reason": "联网时向 registryUrls 配置的公开 registry 交叉核对包与版本；URL 路径会带上从回答中抽出的包名，其余内容不传输。离线时不出网。"
+      "reason": "断言核验会向配置 registry 查询包名；最终审核会将真人请求、草稿及本轮工具参数/文本结果发给当前模型 provider，额外消耗模型用量。关闭 requireOperationEvidence 可停用最终审核。"
     }
   ],
   "contributes": {
     "x-display": [
       {
         "title": "dsh-doubt",
-        "description": "分层取证：插件每轮结束自己跑本机 oracle 与多来源交叉，把实测证据注入下一轮；附带 verify_claims 取证工具。"
+        "description": "最终正文显示前审核实际工具证据，缺少验收时自动补查；保留断言核验与文档溯源。"
       }
     ],
     "x-prompt-sections": [
@@ -56,7 +56,8 @@
         "source": "dsh-doubt 插件本体",
         "publicPrefix": "",
         "tools": [
-          "verify_claims"
+          "verify_claims",
+          "doubt_review"
         ]
       }
     ]

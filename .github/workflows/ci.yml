@@ -25,9 +25,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # typecheck + build + 6 套测试 + smoke + 仓库自检
+      # typecheck + build + 7 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判。
+      # CI 里没有已安装的桌面应用，所以宿主测试与"解包宿主"那几项会如实 SKIP 并以 0 退出；
+      # 真正的回归会 FAIL 并让构建变红（旧版这里用 continue-on-error 把 FAIL 吞掉了）。
       - run: npm run verify
-      # 外部裁判那一套需要解包后的宿主应用（DSH_ASAR_DIR），CI 里没有 → 它会如实 SKIP，
-      # 所以这里只是顺手跑一遍，缺宿主不会让构建变红。
-      - run: npm run verify:independent
-        continue-on-error: true

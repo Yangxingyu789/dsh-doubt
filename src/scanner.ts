@@ -259,7 +259,7 @@ export function scanAnswer(text: string, options: ScanOptions = {}): ScanResult 
   return { score, findings, chars: body.length }
 }
 
-/** 本轮是否已经调用过取证类工具 */
+/** @deprecated 仅判断工具名是否出现，不代表已取证；自动循环不再据此跳过。 */
 export function turnHadVerification(toolNames: Iterable<string>, allowed: readonly string[]): boolean {
   const set = new Set(allowed)
   for (const name of toolNames) if (set.has(name)) return true
@@ -335,24 +335,29 @@ export function sessionCwd(events: readonly unknown[]): string | null {
 export interface TurnExtract {
   turn: number
   text: string
+  /** 最后一条非空 assistant 文本，避免把中间计划当成交付结论 */
+  finalText: string
   toolNames: string[]
 }
 
 export function extractTurn(events: readonly unknown[], turn: number): TurnExtract {
   let text = ''
+  let finalText = ''
   const toolNames: string[] = []
   for (const raw of events) {
     const ev = raw as { type?: string; data?: any }
     if (!ev || typeof ev.type !== 'string' || !ev.data) continue
     if (Number(ev.data.turn) !== turn) continue
     if (ev.type === 'assistant/message') {
-      text += collectText(ev.data.message)
+      const part = collectText(ev.data.message)
+      text += `${part}\n`
+      if (part.trim()) finalText = part
     } else if (ev.type === 'tool/call' || ev.type === 'tool/result') {
       const name = ev.data.name ?? ev.data.toolName ?? ev.data.call?.name
       if (typeof name === 'string') toolNames.push(name)
     }
   }
-  return { turn, text, toolNames }
+  return { turn, text, finalText, toolNames }
 }
 
 /** 尽力从各种 message 形状里抠出纯文本 */

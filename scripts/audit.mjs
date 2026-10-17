@@ -111,8 +111,9 @@ notes.push(`test 脚本 ${suiteCount} 套 + smoke`)
 // 10. manifest 声明的工具名必须真的在代码里注册
 const declaredTools = (manifest.contributes?.['x-tool-namespaces'] ?? []).flatMap((ns) => ns.tools ?? [])
 for (const t of declaredTools) {
-  if (!read('src/tool.ts').includes(`'${t}'`) && !read('src/tool.ts').includes(`"${t}"`)) {
-    problems.push(`manifest 声明工具 ${t}，但 src/tool.ts 里找不到`)
+  const toolSources = read('src/tool.ts') + read('src/completion.ts')
+  if (!toolSources.includes(`'${t}'`) && !toolSources.includes(`"${t}"`)) {
+    problems.push(`manifest 声明工具 ${t}，但工具实现里找不到`)
   }
 }
 notes.push(`manifest 工具声明：${declaredTools.join(', ')}`)

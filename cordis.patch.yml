@@ -32,6 +32,13 @@
         strictLabeling: true
         # 交付文档（.md/.txt）写出但正文没有出处标注时，要求补一份逐步骤溯源表
         requireProvenance: true
+        # 最终文本显示前独立审核；不受措辞、短回答与风险分门槛影响
+        requireOperationEvidence: true
+        operationMaxRounds: 2
+        # 审核输入是中文正文+工具证据，字符量级≈token 量级：
+        # 120k 字符实测会让审核调用超过 60s（REVIEW_TIMEOUT → 回答被扣留）。
+        reviewTimeoutMs: 120000
+        reviewMaxChars: 48000
 
         maxRounds: 2
         minScore: 6

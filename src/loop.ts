@@ -17,7 +17,7 @@ import type { DoubtConfig } from './config.js'
 import { gatherEvidence, type Evidence } from './evidence.js'
 import { factoredCheck, type FactoredOutcome } from './factored.js'
 import { buildEvidenceText, buildProvenanceText, buildRecheckText, detectLanguage } from './prompts.js'
-import { agentWorkspace, extractTurn, lastTurn, scanAnswer, sessionCwd, turnHadVerification, writtenDeliverables } from './scanner.js'
+import { agentWorkspace, extractTurn, lastTurn, scanAnswer, sessionCwd, writtenDeliverables } from './scanner.js'
 
 /** 只声明用到的最小 agent 形状，避免把 dsh-agent 类型拉进依赖 */
 export interface DoubtAgent {
@@ -35,6 +35,10 @@ export interface DoubtAgent {
 export interface LoopOptions {
   getConfig: () => DoubtConfig
   log?: (...args: unknown[]) => void
+  /** Terminal completion-review failures must not restart legacy checks or provenance. */
+  skipTurn?: (agent: DoubtAgent, turn: number) => boolean
+  /** Reviewed prose needs no second assertion/Tier C pass; document provenance still applies. */
+  reviewedTurn?: (agent: DoubtAgent, turn: number) => boolean
   /** 注入延迟（ms）：让宿主先把 idle 状态落稳，避免与用户 submit 竞态 */
   delayMs?: number
   /** 联网探测（可注入以便测试） */
@@ -172,6 +176,8 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
   const delayMs = Number.isFinite(options.delayMs) ? Number(options.delayMs) : 150
   const slots = new Map<string, Slot>()
   const timers = new Set<ReturnType<typeof setTimeout>>()
+  const evaluating = new Set<string>()
+  let disposed = false
 
   function slot(sessionId: string): Slot | null {
     if (!sessionId) return null
@@ -192,6 +198,13 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
   }
 
   async function evaluate(agent: DoubtAgent): Promise<void> {
+    const id = String(agent.id ?? agent.session?.id ?? '')
+    if (disposed || evaluating.has(id)) return
+    evaluating.add(id)
+    try { await evaluateTurn(agent) } finally { evaluating.delete(id) }
+  }
+
+  async function evaluateTurn(agent: DoubtAgent): Promise<void> {
     const cfg = options.getConfig()
     if (!cfg.enabled || !cfg.autoVerify) return
     if (agent.status === 'running' || inboxBusy(agent)) return
@@ -200,9 +213,14 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
     const entry = slot(sessionId)
     if (!entry) return
 
-    const events = sessionEvents(agent)
+    const events = [...sessionEvents(agent)]
     const turn = lastTurn(events)
     if (turn <= 0 || entry.handledTurn === turn) return
+    if (options.skipTurn?.(agent, turn)) { entry.handledTurn = turn; return }
+    const end = events.findLast((e: any) => e?.type === 'turn/end' && Number(e.data?.turn) === turn) as any
+    // DSH records reason as { kind: 'completed' }; older fixtures used a string.
+    const endReason = typeof end?.data?.reason === 'string' ? end.data.reason : end?.data?.reason?.kind
+    if (endReason && endReason !== 'completed') return
 
     const entrySource = turnEntrySource(events, turn)
     if (entrySource !== SOURCE_KIND) {
@@ -222,8 +240,8 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
     // 都有据可依」后，能自己产出 42 项 / 9 类的溯源表。所以文档场景下正确的动作不是
     // 「判不了就沉默」，而是**要求它自己披露依据**。
     //
-    // 为什么放在 turnHadVerification 之前：对文档而言「用了 read/write」不是取证。
-    // 实测 138 轮里 98.6% 被那道闸拦掉，其中就包括只用了 read/edit 的写文档轮。
+    // 历史上这条分支早于工具名豁免：对文档而言「用了 read/write」不是取证。
+    // 工具名豁免已移除；文档溯源仍保留自己的触发条件与预算。
     //
     // 预算独立于 maxRounds：maxRounds 是为「断言级插话」设的（默认 2），而一份文档一份
     // 溯源表是交付要求。只在本轮**新写出的**交付文档上触发、同一路径只问一次，另加
@@ -249,9 +267,13 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
       }
     }
 
-    // 下面是原来的「断言级」闸门，顺序与语义保持不变
+    // Completion review already checked this prose against evidence. Keep the
+    // independent deliverable requirement above, but do not audit it again via
+    // legacy claims or create factored children after the answer was accepted.
+    if (options.reviewedTurn?.(agent, turn)) { entry.handledTurn = turn; return }
+
+    // 断言级检查也必须继续：用过工具并不能证明回答中的其它断言。
     if (entry.rounds >= cfg.maxRounds) return
-    if (turnHadVerification(extract.toolNames, cfg.verificationTools)) return
     if (scan.score < cfg.minScore) return
 
     const claims = extractClaims(scan.findings, { executeAnswerCommands: cfg.executeAnswerCommands, text: extract.text })
@@ -312,7 +334,10 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
       }, lang)
     }
 
-    if (typeof agent.followup !== 'function') return
+    // 取证可能耗时；用户已继续、出现新事件或插件已卸载时不得注入旧结论。
+    if (disposed || agent.status === 'running' || inboxBusy(agent)
+      || sessionEvents(agent).length !== events.length || !options.getConfig().enabled
+      || typeof agent.followup !== 'function') return
     try {
       agent.followup(makeMessage(text))
       entry.handledTurn = turn
@@ -354,6 +379,7 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
 
   return {
     dispose() {
+      disposed = true
       for (const timer of timers) clearTimeout(timer)
       timers.clear()
       slots.clear()

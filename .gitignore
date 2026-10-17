@@ -13,3 +13,9 @@ eval/out/
 # 本机取证/排查现场：含会话记录、浏览器登录库备份（Login Data / Cookies）、
 # 系统日志与卷影比对结果。属于纯本地隐私材料，绝不进版本库、绝不公开。
 _diag/
+
+# 本仓库用 pnpm（pnpm-lock.yaml 在版本库里）。别把别的包管理器顺手生成的锁文件、
+# 解包出来的宿主副本提交进来。
+yarn.lock
+package-lock.json
+dsh-asar/

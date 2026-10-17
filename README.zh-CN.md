@@ -6,7 +6,7 @@
 
 模型第一遍回答经常不严谨：命令没跑过、路径没确认、版本号是记忆的、API 签名是编的。你只能反复追问「你确定吗」——它每次真去查都能查出问题，于是一个可靠结论要问好几次。
 
-`dsh-doubt` 把这件事自动化，但**不是**让模型「再想想」：每轮结束后，**插件自己**用本机确定性来源和（联网时的）多来源交叉去核验回答里的断言，然后把**实测证据**注入下一轮。
+`dsh-doubt` 在最终正文显示前，独立审核用户要求、草稿和实际工具证据。证据不足时通过宿主循环要求模型补查；无法验证时明确报告未完成。原有回合后本机断言检查、多来源交叉和文档溯源仍保留。
 
 中文 | [English](README.md)
 
@@ -25,7 +25,7 @@
 | yes/no 式核验提问 | 模型倾向**不管对错都表示同意** | 同上 |
 | 独立重推导 + 多数投票 | 76.7 → 82.5 → 85.3 → 88.2（随采样数上升），同等成本下优于多智能体辩论 | [2310.01798 §4](https://arxiv.org/abs/2310.01798) |
 
-结论：**「你确定吗」是有害的多次检查；「换个独立上下文重推导一遍并投票」是有效的多次检查。** 本插件只做后者。
+以上是早期 Tier C 的设计参考，不是本版本效果的证明。当前独立审核会比较草稿与实际证据，其判断仍需实际评测。
 
 ---
 
@@ -101,7 +101,7 @@ pnpm install --offline
 | `enabled` | `true` | 总开关 |
 | `verifyTool` | `true` | 注册 `verify_claims` |
 | `promptSection` | `true` | 注入分层取证规则 + 硬性禁令 |
-| `autoVerify` | `true` | 插件自己跑 Tier A/B 并注入证据 |
+| `autoVerify` | `true` | 自动审核总开关：最终正文审核与回合后 Tier A/B/C |
 | `requireSources` | `2` | 在线时 confirmed 需要的独立一致来源数 |
 | `probeUrls` | 2 个 registry + arXiv | 联网探测候选 |
 | `registryUrls` | npmmirror, npmjs | Tier B 交叉来源 |
@@ -112,13 +112,17 @@ pnpm install --offline
 | `executeAnswerCommands` | `false` | **默认不执行回答里出现的命令**，只验证程序是否存在 |
 | `strictLabeling` | `true` | 无法核验的断言必须在最终回答里标「未验证」 |
 | `requireProvenance` | `true` | 写出交付文档（`.md`/`.txt`）但正文没有出处小节时，要求补一份逐步骤溯源表（见「溯源闸」）。同一份文档只问一次；独立预算，一次人工回合最多 4 次，不受 `maxRounds` 影响 |
+| `requireOperationEvidence` | `true` | 显示前独立审核全文与工具证据，不依赖关键词或字数 |
+| `operationMaxRounds` | `2` | 每个宿主 turn 退回补查上限（0–5）；0 仍审核但不重试 |
+| `reviewTimeoutMs` | `120000` | 单次审核超时（最多两次尝试）；超时不放行原稿，但会去掉历史记录重试一次 |
+| `reviewMaxChars` | `48000` | 审核请求字符上限（中文按字≈token）。历史记录最多只占 1/4，避免请求顶满上限而超时 |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
 | `maxRounds` | `2` | 注入轮数上限（人工发新消息即重置） |
 | `minScore` | `6` | 触发阈值，调高 = 更少打扰 |
 | `maxFindings` | `8` | 最多列几条断言 |
-| `minAnswerChars` | `240` | 短回答不触发 |
+| `minAnswerChars` | `240` | 断言级检查的篇幅门槛；不豁免操作取证 |
 | `detectors` | `{}` | 单个检测器开关 |
-| `verificationTools` | 见源码 | 本轮出现过即视为已取证 |
+| `verificationTools` | 兼容保留 | 已弃用，不参与放行或整轮豁免 |
 | `denyBinaries` | `rm/del/format/…` | `verify_claims` 拒绝执行的程序 |
 | `timeoutMs` | `15000` | 单条检查超时 |
 | `language` | `auto` | 注入文本语言 |
@@ -176,10 +180,10 @@ pnpm install --offline
 
 ## 免打扰设计
 
-1. **没有正面反驳就不说话**：只有 `refuted`、带反驳来源的 `inconclusive`、或 Tier C 投票分裂才注入。单纯「核验不了」**不打扰**——v0.2 那版「非 confirmed 就说话」实测会对 100% 的回答插话，纯噪音。
-2. **本轮已取证不打扰**：出现过 `bash` / `read` / `grep` / `web_search` / `verify_claims` 等。
-3. **短回答不触发**；**轮数上限** `maxRounds`，人工新消息即重置。
-4. **状态闸**：agent `running` 或 inbox 有积压时不注入。
+1. **断言级检查没有正面反驳就不说话**：只有 `refuted`、带反驳来源的 `inconclusive`、或 Tier C 投票分裂才注入。操作取证和文档溯源各有独立触发条件。
+2. **调用过工具不等于已验证**：取消了 `bash/read/grep/verify_claims` 等工具名出现即整轮跳过的规则；错误结果、无关读取和修改前的检查都不能证明任务完成。
+3. **短回答只豁免断言级扫描**；最终正文仍审核。最终审核预算按宿主 turn 重置，旧 followup 预算按人工消息重置。
+4. **状态闸**：回合后检查在 agent running 或 inbox 有积压时不注入；最终审核在当前请求内执行。
 
 ---
 
@@ -191,11 +195,33 @@ pnpm install --offline
 - **超时**：默认 15 秒，超时 `SIGKILL` 并如实报告。
 - **输出上限**：4000 字符截断。
 - **`expr` 空沙箱**：`vm.runInNewContext` + 空 context，无 `require` / `process` / `globalThis`。
-- **联网行为**：只向 `registryUrls` 配置的公开 registry 发 GET。**注意**：URL 路径里会带上从回答中抽出的**包名**（`/registry/<pkg>`），所以包名会离开本机；除此之外不传输任何内容。联网探测只访问 `probeUrls`，不带参数。离线时完全不出网。
+- **联网行为**：registry 查询会发送回答中的包名；探测访问 `probeUrls`。默认最终审核还会向当前模型 provider 发送真人请求、草稿和本轮工具参数/文本结果，额外消耗模型用量。关闭 `requireOperationEvidence` 可停用此请求；provider 不可用时审核报告未完成。Tier C 也使用宿主模型能力，registry 离线判定不代表完全不调用模型。
 
 它**不**走 DSH 的沙箱与审批链——插件层的已知限制。要更严就收紧 `denyBinaries`，或 `verifyTool: false`。
 
 ---
+
+## 操作取证闸
+
+旧版 `turnHadVerification` 只看工具名就跳过整轮；短于 240 字、风险分低、没有机械反证也会退出。文档溯源位于这些豁免之前，所以看起来只有文档受到约束。
+
+现在在 `llm/stream` 暂存完整最终正文，用同一 provider/model 的独立请求审核真人请求、草稿、本轮工具参数、原始结果与时序。审核器没有工具，不继承作者系统提示或思考内容。
+
+1. 审核相关性、目标、结果、修改后的状态和用户验收要求。读取 README、False、写入回执不能证明程序修好了；不要求面向用户的正文包含工具 ID。
+2. 审核通过必须逐段覆盖全文，内部引用实际 callId 与结果原文。插件机械检查覆盖、引用和操作后时序，语义相关性仍由模型判断。
+3. 审核明确发现证据缺口时，`doubt_review` 回执替换草稿，宿主继续当前 turn。要求实际补查、遵守原授权，也允许诚实披露未完成。审核意见自身标为待核实。
+4. 审核接口失败、超时、格式错误或材料超限是插件审核故障，不是任务失败。显示具体错误码**和校验器给出的原因**，保留已有工具记录，不发送补查回执、不启动回合后重复检查。JSON 非法或契约不满足（`INVALID_REVIEW`）会带着校验器的原话**重试一次**——格式错误不该等同于任务失败。
+5. **审核永不吞掉回答**：预算内的驳回仍发 `doubt_review` 回执继续补查；但**终局退路**——补查预算用尽、审核服务故障、回放协议不支持——会把草稿**照常放行，并在末尾附一条横幅**（「以上草稿未经完整审核」+ 未核实意见或故障码/原因）。早期版本在终局扣留草稿，实测会把有用回答整段吞掉。
+6. 审核输出用段落编号覆盖全文，段落按 ~400 字符分组（此前一行一段，长回答会让审核器每行输出一个 JSON 段）。输出截断时内部重试一次（12000 → 24000 tokens）并顺带丢掉可选历史，每次遵守 `reviewTimeoutMs`；该重试不执行用户工具。`partIds` 与 `text` 混用但拼接后仍覆盖草稿时予以接受；数字字符串与逗号连接的 `partIds` 也接受。
+7. 整个请求按 `reviewMaxChars` 做预算，**当前轮工具记录也算在内**：装得下就整条保留，装不下就按份额截短，并写入显式截断标记与 `truncated`/`truncatedCalls`，因此工具输出很多的一轮不再以 `INPUT_LIMIT` 被扣留。历史记录最多只占预算的四分之一，普通请求不再顶满上限；万一仍然超时，会去掉历史重试一次。
+
+**成本和边界**：每次最终回答增加模型调用和等待，包括短回答；输出截断最多再审核一次。审核用量目前不并入原回答 token 统计。带工具调用的中间正文会暂缓显示，工具照常经过宿主执行/审批流程；最终回答统一审核。已写入磁盘的文档仍使用原溯源规则。DeepSeek 思考内容/签名为协议继续执行而保留，不是审核后的最终正文。PTC-only 未暴露回执工具、未知思考回放协议不支持自动补查。材料是本轮文本工具证据，不能代替图像验收或完整历史任务管理。审核服务故障仍会阻止最终草稿显示，但不会误称“自动取证用尽”或要求重新操作。模型审核会漏判/误判，不保证消除幻觉。
+
+实现：[src/completion.ts](src/completion.ts)、[src/operations.ts](src/operations.ts)。离线契约测试见 `test/operations.test.mjs`；真实宿主核心/循环测试见 `test/host.test.mjs`、`test/host-loop.test.mjs`。`eval/review-live.mjs` 用真实模型审核合成证据，网络失败计为 ERROR，不算正确拦截。
+
+2026-10-17 的 0.5.1 验证：通过真实 LlmRuntime 和 deepseek-flash，分三次运行的 23 个合成案例符合预期（14 项拒绝、9 项放行）。同一长回答在旧 0.5.0 中触发 `max-tokens` 并复现“审核没有正常完成”，新版通过。另在真实 AgentLoop 的 UI 输出流确认中间结论被隐藏，审核接口 SERVER 故障没有触发重复操作。这些是有限样本，不是生产错误率，也不证明截图中的 Windows 任务已经修复。更新安装副本并重启 DSH 才会加载新代码；仓库测试不等于桌面已生效。
+
+真实 AgentLoop 的故障注入测试还验证了：初始过早成功草稿被真实审核模型拦截后，真实执行模型自行回读临时配置，并提交了通过审核的回答，无需第二条人工消息。初始失败为人为注入，测试不操作真实应用。可用 `test/host-loop.test.mjs --app <安装目录> --live --account-home <DSH_HOME> --model deepseek-flash` 重跑。
 
 ## 溯源闸
 
@@ -215,13 +241,25 @@ pnpm install --offline
 ```bash
 pnpm install            # 联网
 pnpm install --offline  # 已有 pnpm store 时
-npm run verify          # tsc 检查 + 构建 + 6 套测试
+npm run host:unpack     # 解包已安装 DSH 的 app.asar 供宿主级检查使用（自动定位安装目录，可用 --app 覆盖）
+npm run verify          # tsc 检查 + 构建 + 7 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判
+# 两个宿主测试与外部裁判需要已安装的桌面应用；找不到时打印 SKIP 并以 0 退出，不会误报失败。
+npm run verify:host
+npm run verify:host-loop
+# 可选联网评测：消耗所选账户用量，仅发送合成案例
+npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model deepseek-flash
 ```
+
+需要**已解包宿主**的那几项，在宿主缺失、**陈旧或不完整**时会打印 `SKIP` 并说明原因：桌面应用
+升级后跑一次 `npm run host:unpack`，或用 `DSH_ASAR_DIR` 指向已有的解包目录。半个 asar 只会
+被报成 `SKIP`，不会被报成 `FAIL` —— 宿主副本里少了个模块，说明不了这个插件有问题。
 
 | 文件 | 职责 |
 |---|---|
 | [src/index.ts](src/index.ts) | 入口：工具、提示词段、取证循环、联网探测 |
 | [src/scanner.ts](src/scanner.ts) | 风险扫描器（纯函数） |
+| [src/completion.ts](src/completion.ts) | 显示前审核、证据契约、回执和失败关闭 |
+| [src/operations.ts](src/operations.ts) | 工具调用/原始结果配对与执行状态 |
 | [src/claims.ts](src/claims.ts) | 断言 → 可执行检查（含安全解析） |
 | [src/local.ts](src/local.ts) | Tier A 本机 oracle |
 | [src/evidence.ts](src/evidence.ts) | Tier A/B 编排 + 判定规则 |
@@ -281,8 +319,8 @@ npm run verify          # tsc 检查 + 构建 + 6 套测试
 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
-| 1 | 6 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `npm run verify` 实测 exit 0；`package.json` 的 `test` 脚本正好串了 6 个 `node test/*.test.mjs` |
-| 2 | 版本 0.4.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 实测输出 `版本一致：0.4.0` |
+| 1 | 7 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 7 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
+| 2 | 版本 0.5.1，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 实测输出 `版本一致：0.5.1` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |
@@ -300,6 +338,20 @@ npm run verify          # tsc 检查 + 构建 + 6 套测试
 | 17 | 本 README 的 clone 地址指向 `github.com/Yangxingyu789/dsh-doubt` | **有出处** | 占位符 `<你的GitHub账号>` 恰好替换 5 处（README.md 1、README.zh-CN.md 1、package.json 3），残留 0 处；`git remote -v` 的 `origin` 是同一地址 |
 | 18 | 该仓库确实存在，且写这张表时是**私有**的 | **有出处** | 用本机已登录的浏览器会话实测加载：HTTP 200、标题 `Yangxingyu789/dsh-doubt: …`、页面含 `svg.octicon-lock` 与 `Private` 字样、无 `Public`；另一个独立来源：匿名 `GET https://api.github.com/repos/Yangxingyu789/dsh-doubt` 返回 **404** |
 | 19 | 它目前仍是空仓库（还没有推送成功） | **有出处** | 同一页面命中 GitHub 的空仓库引导文案（`…or push an existing repository`）；本地提交 `7e3d42b` 存在，但 push 尚未完成 |
+| 20 | `npm run verify` 现在也覆盖宿主测试与外部裁判，而不只是 tsc/测试/自检 | **有出处** | `package.json` 的 `verify` 串上了 `verify:host && verify:host-loop && verify:independent`；上一版（`git show HEAD:package.json`）止于 `npm run audit`，所以这三项全红时 `verify` 仍然是绿的 |
+| 21 | 宿主测试不需要 `--app` 也能找到已安装的桌面应用 | **有出处** | `scripts/host-app.mjs` 依次探测 `--app`、`DSH_APP_DIR`、运行中的 `DeepSeek Harness` 进程与常见安装位置；本机实测：改动后不带任何参数跑 `npm run verify:host`、`npm run verify:host-loop` 均通过 |
+| 22 | 宿主解包陈旧或不完整时报 `SKIP`，不报 `FAIL` | **有出处** | `scripts/verify-independent.mjs` 的 `hostUnpackProblem()` 检查 CLI、`dsh-app-boot/package.json` 与 `.unpacked.json` 标记是否与当前 `app.asar` 一致；标记由 `scripts/unpack-host.mjs`（`npm run host:unpack`）写入 |
+| 23 | 本机原先的解包是陈旧且不完整的：287 个包里有 87 个缺 `package.json` | **有出处（重新解包前实测；该状态现已不存在）** | 实测：`dsh-asar` 时间为 2026-10-16 21:01，而 `app.asar` 为 2026-10-17 12:49；287 个包里 87 个缺 `package.json`，导致 `dsh-app-boot/index.js` 报 `ERR_MODULE_NOT_FOUND`。跑 `npm run host:unpack` 后写入 16711 个打包文件 + 1583 个 unpacked 文件（18294 = asar 头自报的数量），外部裁判变成 6 PASS / 0 FAIL / 0 SKIP |
+| 24 | 工具输出多的一轮曾超过 `reviewMaxChars`，审核闸把整段最终回答按 `INPUT_LIMIT` 扣留 | **有出处（用本机会话记录实测）** | 用插件自己的 `buildReviewPacket` 从该会话的工具事件复算：第 6 轮 **77 次调用 / 209,267 字符**结果，payload 达 **216,921** 字符（上限 120,000）；同一轮修复后为 **119,735** 字符 |
+| 25 | 超长工具结果按份额截短并带显式标记，不静默丢弃，且当前轮每条调用都保留 | **有出处（源码 + 测试）** | `src/completion.ts` 的 `clipRecord()` 追加 `[dsh-doubt] result truncated: kept N of M chars` 并写入 `truncated`；`test/operations.test.mjs` 的 flood 用例（77 × 2,700 字符）断言 payload ≤ 上限、77 条全在、`truncatedCalls > 0`，且从保留前缀取引文仍能通过校验 |
+| 26 | `npm run verify` 现在会跑全部四种 host-loop 场景 | **有出处** | `package.json` 的 `verify:host-loop` 串上默认、`--exhausted`、`--reviewer-error`、`--history`；实测：修复文案前 `--exhausted` 断言失败（期望 自动取证轮数已用尽），修复后四种全过 |
+| 27 | 历史记录把大多数审核请求填到约 119.7k 字符 | **有出处（实测）** | 用插件自己的 `buildReviewPacket` 从本机会话逐轮复算：第 1–7 轮分别为 81,757 / 119,724 / 119,570 / 119,738 / 119,713 / 119,706 / 119,668 字符（当时上限 120,000） |
+| 28 | 这使审核调用超过 60s 截止，回答按 `REVIEW_TIMEOUT` 被扣留 | **有出处** | 受影响那轮审核闸自己的提示是 `插件审核服务出错（REVIEW_TIMEOUT）`；修复后 `reviewMaxChars` = 48,000、历史最多占预算 1/4、`reviewTimeoutMs` = 120,000 ms，并在超时后去掉历史重试一次 |
+| 29 | 历史预算与超时重试都有测试覆盖 | **有出处（由测试保证）** | `test/operations.test.mjs`：120 条历史的用例断言 payload < 48,000×0.8 且当前轮证据仍优先；超时用例断言恰好重试一次并随后放行草稿 |
+| 30 | 长回答时审核器输出预算两次耗尽（`max-tokens`），草稿被扣留 | **有出处（本机会话日志实测）** | 本会话日志记录第 8 轮为 `插件审核服务出错（max-tokens）`；同一日志里第 6 轮是 `INPUT_LIMIT`、第 7 轮是 `REVIEW_TIMEOUT` |
+| 31 | 段落改为按 ~400 字符分组，截断重试改用 12000→24000 tokens 并丢掉历史 | **有出处（源码 + 测试）** | `src/completion.ts` 的 `draftParts()` 分组与 `finish === 'max-tokens'` 重试分支；`test/operations.test.mjs` 断言 200 行短句合并成 ≤30 段且拼回原文一致，并断言重试时 `maxTokens=24000` 且只剩当前轮记录 |
+| 32 | `INVALID_REVIEW` 只出自 `validateReview` 的 `fail()` 分支，本会话出现过一次 | **有出处（源码 + 会话日志）** | `src/completion.ts` 的 `fail()` 返回 `failure.code = 'INVALID_REVIEW'`；本会话日志里恰好一条：turn 12，本地时间 17:09:34 |
+| 33 | 契约不满足/JSON 非法现在会带着校验器原因重试一次；`partIds` 与 `text` 混用在正文覆盖一致时接受；提示带具体原因 | **有出处（源码 + 测试）** | `src/completion.ts` 的 `repair()`/`repairNote` 与放宽后的覆盖分支；`test/operations.test.mjs` 断言重试请求含 "rejected by the output validator" 与 `partIds 0..0`、非法 JSON 会重试、混用表示可放行、`{partIds:[0,2]}` 报出 `partId` 细节 |
 
 如果你希望第 8、10、11、12 条变成「有出处」，诚实的做法只有两条：(a) 提交一份**脱敏后**的语料
 （去掉会话 ID 与路径），让这些数字可重建；或 (b) 重新推导一遍，并写明测于哪个 commit。

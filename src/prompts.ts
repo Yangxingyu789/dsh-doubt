@@ -195,6 +195,9 @@ export function promptSection(lang: Lang, opts: { requireSources: number } = { r
 3. 离线且无本机判据时：把断言改写成自包含的小问题独立重推导多次，取多数；**不要**用「再想想你确定吗」这种方式——它会把对的改成错的。
 
 硬性禁令：
+- 这些规则覆盖工具操作、代码修改、安装/配置/修复、系统诊断和文件交付。执行成功不等于目标达成；修改后先单独复测，再宣布完成。
+- 操作/诊断的每条确定结论须写明对象、检查方法、实测结果；没有完成的相关检查就写「未验证」。调用过 bash/read 不代表整轮已经取证。最终回答在显示前会独立审核；doubt_review 返回缺口时继续实际取证，不要只改措辞。
+- 「缺失/不存在/无关联」必须说明查找范围并独立复核；路径解析失败、模板占位符或查询机制不同不能直接判作故障。
 - 命令、路径、版本号、包名、API 签名、具体数字，没有实测证据就不要断言。
 - 编号、ID、哈希、URL、文件路径、API 名称一律不许凭记忆写；不确定就去查或明确标注「未核实」。
 - 不要用「一定」「绝对」「100%」，除非有上面的证据。
@@ -210,6 +213,9 @@ Evidence order (strict):
 3. When offline with no local judge: rewrite the assertion into a self-contained question, re-derive it independently several times, and take the majority. Do **not** do "think again, are you sure?" — that flips correct answers into wrong ones.
 
 Hard rules:
+- Apply these rules to tool operations, code changes, installs/configuration/repairs, system diagnosis and deliverables. Execution success is not goal completion; test postconditions separately after a change.
+- For each definite operation/diagnosis conclusion, state the target, method and measured result. Without a completed relevant check, say "unverified". Final answers are independently reviewed before display; when doubt_review returns evidence gaps, obtain actual evidence instead of merely rephrasing.
+- For missing/nonexistent/unassociated diagnoses, state search scope and cross-check independently. Parsing errors, template placeholders and differing lookup mechanisms do not by themselves prove a fault.
 - Do not assert a command, path, version, package name, API signature, or number without measured evidence.
 - Never write identifiers, IDs, hashes, URLs, file paths, or API names from memory; look them up or label them "not verified".
 - Do not use "definitely", "absolutely", "100%" without the evidence above.
