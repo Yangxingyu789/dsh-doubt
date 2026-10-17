@@ -41,6 +41,10 @@
         reviewMaxChars: 48000
         # 长草稿分段审核：单包装不下证据时按段拆成多次审核，避免整轮 fail-open
         segmentedReview: true
+        # 审核调用的 reasoning effort：宿主 DeepSeek adapter 未指定时默认 high + thinking，
+        # thinking token 与 max_tokens 共用。实测第 1 次尝试 12000 输出 token 全花在 thinking
+        # 上（可见正文 0 字符）→ max-tokens → 只能带「未经完整审核」横幅放行。默认 off。
+        reviewReasoningEffort: off
         # 危险变更闸门：出现 live profile/插件安装、杀进程/停服务、注册表/服务、递归删除等
         # 动作时，最终审核确定性打回，要求回滚路径 + 用户确认 + 动作后独立健康检查
         guardLiveMutation: true

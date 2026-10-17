@@ -18,7 +18,7 @@ import { buildVerifyTool } from './tool.js'
 import { createCompletionGuard } from './completion.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.6.0'
+export const version = '0.6.1'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'

@@ -117,6 +117,7 @@ pnpm install --offline
 | `reviewTimeoutMs` | `120000` | 单次审核超时（最多两次尝试）；超时不放行原稿，但会去掉历史记录重试一次 |
 | `reviewMaxChars` | `48000` | 审核请求字符上限（中文按字≈token）。历史记录最多只占 1/4，避免请求顶满上限而超时 |
 | `segmentedReview` | `true` | 整包装不下时按段审核长草稿（见「操作取证闸」）；`false` 回退单包路径 |
+| `reviewReasoningEffort` | `off` | 审核调用的 reasoning effort。宿主 DeepSeek adapter 在未指定时默认 `high` + thinking，而 thinking 与 `max_tokens` 共用预算；实测第 1 次尝试 12000 输出 token 全花在 thinking 上、可见正文 0 字符 → `max-tokens`。`off` 把预算留给 JSON 判定；`default` 回退宿主默认 |
 | `guardLiveMutation` | `true` | 审核前的确定性危险变更闸门（见「危险变更闸门」）；`false` 完全回退旧行为 |
 | `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | `guardLiveMutation` 的受保护路径片段（大小写、斜杠不敏感） |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
@@ -220,6 +221,8 @@ pnpm install --offline
 
 **分段审核（`segmentedReview`，默认 `true`）**：整包（草稿 + 本轮证据）超出 `reviewMaxChars` 时，按 `draftParts` 把草稿切成最多 6 段，每段单独打包审核，每包能留更多空间给证据。任一段返回 `verify` 立即返回意见；某段审核服务失败时只披露未审完的段（「只有部分段落完成审核…」），不再整轮失败；装得下的草稿仍走原单包路径。`segmentedReview: false` 回退旧单包路径（可能超出预算并按 `INPUT_LIMIT` 失败关闭）。由受控 reviewer 测试覆盖（`test/segments.test.mjs`、`test/review-draft.test.mjs`）；真实长任务效果尚未实测。
 
+**审核器的思考预算（`reviewReasoningEffort`，默认 `off`）**：审核调用原本不指定 reasoning 控制，宿主 DeepSeek adapter 会默认 effort=`high` 并开启 thinking（`dsh-llm-deepseek`：`options.reasoningEffort ?? connection.defaults.reasoningEffort ?? "high"`），而 thinking token 与 `max_tokens` 共用。用本机已落盘的 turn 4 审核包（52,672 字符 / 7 段）经真实宿主 `LlmRuntime` 重放复现：第 1 次尝试（12,000 token）**可见正文 0 字符**、finish=`max-tokens`；同一包 effort=`off` 在 2.9s / 325 output tokens 内给出有效判定。插件现在显式发送 `reasoningEffort`（默认 `off`），provider 不支持时自动去掉该字段重试，24,000 token 的重试也保持该设置；`default` 回退宿主默认（旧行为）。由 `test/review-effort.test.mjs` 覆盖；要真正在桌面宿主生效需要重新安装 + 重启。
+
 **成本和边界**：每次最终回答增加模型调用和等待，包括短回答；输出截断最多再审核一次。审核用量目前不并入原回答 token 统计。带工具调用的中间正文会暂缓显示，工具照常经过宿主执行/审批流程；最终回答统一审核。已写入磁盘的文档仍使用原溯源规则。DeepSeek 思考内容/签名为协议继续执行而保留，不是审核后的最终正文。PTC-only 未暴露回执工具、未知思考回放协议不支持自动补查。材料是本轮文本工具证据，不能代替图像验收或完整历史任务管理。审核服务故障仍会阻止最终草稿显示，但不会误称“自动取证用尽”或要求重新操作。模型审核会漏判/误判，不保证消除幻觉。
 
 实现：[src/completion.ts](src/completion.ts)、[src/operations.ts](src/operations.ts)。离线契约测试见 `test/operations.test.mjs`；真实宿主核心/循环测试见 `test/host.test.mjs`、`test/host-loop.test.mjs`。`eval/review-live.mjs` 用真实模型审核合成证据，网络失败计为 ERROR，不算正确拦截。
@@ -275,7 +278,7 @@ pnpm install --offline
 pnpm install            # 联网
 pnpm install --offline  # 已有 pnpm store 时
 npm run host:unpack     # 解包已安装 DSH 的 app.asar 供宿主级检查使用（自动定位安装目录，可用 --app 覆盖）
-npm run verify          # tsc 检查 + 构建 + 10 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判
+npm run verify          # tsc 检查 + 构建 + 11 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判
 # 两个宿主测试与外部裁判需要已安装的桌面应用；找不到时打印 SKIP 并以 0 退出，不会误报失败。
 npm run verify:host
 npm run verify:host-loop
@@ -353,8 +356,8 @@ npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model
 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
-| 1 | 10 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 10 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.6.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.0` |
+| 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
+| 2 | 版本 0.6.1，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.1` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |
@@ -388,6 +391,7 @@ npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model
 | 33 | 契约不满足/JSON 非法现在会带着校验器原因重试一次；`partIds` 与 `text` 混用在正文覆盖一致时接受；提示带具体原因 | **有出处（源码 + 测试）** | `src/completion.ts` 的 `repair()`/`repairNote` 与放宽后的覆盖分支；`test/operations.test.mjs` 断言重试请求含 "rejected by the output validator" 与 `partIds 0..0`、非法 JSON 会重试、混用表示可放行、`{partIds:[0,2]}` 报出 `partId` 细节 |
 | 34 | 危险变更闸门在缺少回滚 / 用户确认 / 动作后独立健康检查时拒绝放行 | **有出处（由测试保证）** | `test/guard.test.mjs`：事故时间线（安装脚本 → live profile `pnpm install` → 无后续调用）以 `verify` 打回且 0 次审核模型调用；三件齐全时继续审核；`guardLiveMutation: false` 走旧路径 |
 | 35 | 2026-10-17 事故：DSH 运行中写入 live profile 后所有工具报 `cannot get required service "sessionProjections" in inactive context`，重启后恢复 | **无依据——没有宿主日志** | 记录来自交接文档与会话时间线；热重载根因是推断，闸门在真实宿主会话中的效果未实测 |
+| 36 | 反复出现的 `max-tokens` 横幅来自审核器 thinking 吃光输出预算；显式发送 `reasoningEffort` 可以修复 | **有出处（对已落盘会话包做真实重放）** | 把本机落盘的 turn 4 审核包（52,672 字符 / 7 段）经真实安装版宿主 `LlmRuntime` + DeepSeek adapter 重放：第 1 次尝试（12,000 token）返回 `outputTokens=12000`、`rawChars=0`、finish=`max-tokens`；同一包设 `reasoningEffort="off"` 后 2.9s / 325 output tokens 返回判定。会话证据：落盘的 system message（seq 706，turn 4）含闸门段，而 turn 1 的不含 |
 
 如果你希望第 8、10、11、12 条变成「有出处」，诚实的做法只有两条：(a) 提交一份**脱敏后**的语料
 （去掉会话 ID 与路径），让这些数字可重建；或 (b) 重新推导一遍，并写明测于哪个 commit。

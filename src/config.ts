@@ -48,6 +48,12 @@ export interface DoubtConfig {
   reviewMaxChars: number
   /** 分段审核：单包装不下证据时，把草稿按段拆成多次审核，避免整轮 fail-open */
   segmentedReview: boolean
+  /** 审核调用的 reasoning effort。宿主 DeepSeek adapter 在请求未指定时默认 effort=high
+   *  且开启 thinking，而 thinking token 与输出共用 max_tokens：实测一次审核的第 1 次尝试
+   *  把 12000 输出 token 全部花在 thinking 上（可见正文 0 字符）→ finish=max-tokens →
+   *  回答只能带「未经完整审核」横幅放行。默认 off 让预算全部留给 JSON 判定；
+   *  'default' 表示不传该字段、交给宿主默认（旧行为）。 */
+  reviewReasoningEffort: 'off' | 'low' | 'high' | 'max' | 'default'
   /** 危险变更闸门：工具轨迹出现 live 环境变更（live profile/plugins 写入、宿主机安装、
    *  杀进程/停服务、注册表/服务、递归删除、系统目录写入）时，最终审核确定性打回，
    *  要求回滚路径 + 用户确认 + 动作后独立健康检查；false 时完全退回旧行为 */
@@ -106,6 +112,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   reviewTimeoutMs: 120_000,
   reviewMaxChars: 48_000,
   segmentedReview: true,
+  reviewReasoningEffort: 'off',
   guardLiveMutation: true,
   liveMutationPaths: ['.dsh/profiles', '.dsh/plugins', 'program files', 'programdata', 'c:/windows'],
   workspace: process.cwd(),
@@ -195,6 +202,9 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
     reviewTimeoutMs: clampInt(src.reviewTimeoutMs, 100, 180_000, d.reviewTimeoutMs),
     reviewMaxChars: clampInt(src.reviewMaxChars, 1000, 500_000, d.reviewMaxChars),
     segmentedReview: bool(src.segmentedReview, d.segmentedReview),
+    reviewReasoningEffort: (['off', 'low', 'high', 'max', 'default'] as const).includes(src.reviewReasoningEffort as any)
+      ? (src.reviewReasoningEffort as DoubtConfig['reviewReasoningEffort'])
+      : d.reviewReasoningEffort,
     guardLiveMutation: bool(src.guardLiveMutation, d.guardLiveMutation),
     liveMutationPaths: strings(src.liveMutationPaths, d.liveMutationPaths).map((s) => s.trim()),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,

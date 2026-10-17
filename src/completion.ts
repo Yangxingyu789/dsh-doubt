@@ -430,7 +430,7 @@ export function toolOnlyChunks(chunks: readonly Chunk[]): Chunk[] {
 }
 
 /** Test seam is a real tool-less model call in production, not a heuristic verdict. */
-export async function reviewPacket(packet: ReviewPacket, request: any, llm: any, cfg: DoubtConfig, retry = false, repairNote = '', compact = false): Promise<ReviewDecision> {
+export async function reviewPacket(packet: ReviewPacket, request: any, llm: any, cfg: DoubtConfig, retry = false, repairNote = '', compact = false, omitReasoningEffort = false): Promise<ReviewDecision> {
   request.signal?.throwIfAborted()
   const data = reviewPayload(packet)
   if (data.length > cfg.reviewMaxChars) return unavailable('INPUT_LIMIT', { code: 'INPUT_LIMIT', inputChars: data.length })
@@ -447,10 +447,18 @@ export async function reviewPacket(packet: ReviewPacket, request: any, llm: any,
       : REVIEW_INSTRUCTION
   // No sessionId, tools, author system prompt or author reasoning: this call
   // cannot re-enter the agent-output gate or execute transcript instructions.
+  // The reviewer must be told its reasoning budget explicitly: the host adapter
+  // otherwise defaults to effort=high with thinking enabled, and thinking tokens
+  // share max_tokens. Measured on a real 52,672-char review packet: attempt 1 spent
+  // all 12000 output tokens on thinking with 0 visible characters (finish=max-tokens),
+  // while the same packet with effort=off returned a valid verdict in 2.9s / 325
+  // output tokens. 'default' keeps the old host default (and is retried without the
+  // field when the provider rejects reasoning effort).
   const reviewRequest = {
     provider: request.provider, model: request.model,
     messages: [message('system', instruction), message('user', data)],
     tools: [], signal, maxTokens: retry ? 24000 : 12000,
+    ...(omitReasoningEffort || cfg.reviewReasoningEffort === 'default' ? {} : { reasoningEffort: cfg.reviewReasoningEffort }),
   }
   const texts = new Map<number, string>()
   let size = 0
@@ -515,7 +523,19 @@ export async function reviewPacket(packet: ReviewPacket, request: any, llm: any,
       }
       return await reviewPacket(slim, request, llm, cfg, true)
     }
-    if (finish !== 'stop') return unavailable(failureCode || finish || 'MISSING_FINISH', { code: failureCode || finish || 'MISSING_FINISH', finish, inputChars: data.length, outputChars: size })
+    if (finish !== 'stop') {
+      // Host adapters report an unsupported reasoning control as a terminal
+      // finish reason (code UNSUPPORTED_REASONING_EFFORT), not a thrown error.
+      // Retry once without the field; a reviewer capability mismatch must not
+      // turn into an unreviewed release.
+      if (!omitReasoningEffort && failureCode === 'UNSUPPORTED_REASONING_EFFORT') {
+        clearTimeout(timer)
+        signal.removeEventListener('abort', onAbort)
+        deadline.abort()
+        return await reviewPacket(packet, request, llm, cfg, retry, repairNote, compact, true)
+      }
+      return unavailable(failureCode || finish || 'MISSING_FINISH', { code: failureCode || finish || 'MISSING_FINISH', finish, inputChars: data.length, outputChars: size })
+    }
     const reply = [...texts.values()].join('\n')
     // Degraded last resort: a bare verdict, because the segmented contract requires the
     // reviewer to reproduce exact quotes and numbering that this model often gets wrong.
@@ -544,6 +564,12 @@ export async function reviewPacket(packet: ReviewPacket, request: any, llm: any,
   } catch (error) {
     if (request.signal?.aborted) throw error
     const supplied = (error as any)?.code
+    // A provider/model that does not accept reasoning controls must not lose the
+    // review: retry once without the field instead of releasing an unreviewed draft.
+    if (!omitReasoningEffort && (supplied === 'UNSUPPORTED_REASONING_EFFORT'
+      || /UNSUPPORTED_REASONING_EFFORT/.test(String((error as any)?.message ?? '')))) {
+      return await reviewPacket(packet, request, llm, cfg, retry, repairNote, compact, true)
+    }
     const code = deadline.signal.aborted ? 'REVIEW_TIMEOUT' : error instanceof SyntaxError ? 'INVALID_JSON'
       : typeof supplied === 'string' && /^[A-Z0-9_-]{1,80}$/i.test(supplied) ? supplied : 'REVIEW_EXCEPTION'
     return unavailable(code, { code, finish, inputChars: data.length, outputChars: size })

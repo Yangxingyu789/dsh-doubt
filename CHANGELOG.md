@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.6.1（修「未经完整审核（max-tokens）」：审核器思考预算）
+
+- **现象**：最终回答反复带「以上草稿**未经完整审核**：审核服务未完成（max-tokens）」横幅。0.6.0 装到 live profile 后重启的首个长回答实测复现。
+- **根因（已用真实宿主重放确认，不是推断）**：审核请求原本只传 `provider/model/messages/tools/maxTokens`，没有 reasoning 控制；宿主 `@deepseek-ai/dsh-llm-deepseek` 在未指定时按 `options.reasoningEffort ?? connection.defaults.reasoningEffort ?? "high"` 落成 **effort=high + thinking enabled**（`dsh-llm-deepseek/lib/index.js:1707,1719-1720`），而 thinking token 与 `max_tokens` 共用预算。把本机落盘的 turn 4 审核包（`buildReviewPacket` 复算：52,672 字符 / 7 个 draftParts / 22 条证据）经**真实安装版宿主 `LlmRuntime` + DeepSeekAdapter** 重放：第 1 次尝试（maxTokens=12000）返回 `outputTokens=12000`、**可见正文 `rawChars=0`**、finish=`max-tokens`；重试（24000）在多次运行中有时成功、有时同样被 thinking 吃满，于是回答只能带横幅放行。同一包 `reasoningEffort="off"` → 2.9s、325 output tokens 返回有效判定。
+- **修复**：审核请求显式发送 `reasoningEffort`，新增配置 `reviewReasoningEffort`（默认 `off`；可选 `low`/`high`/`max`/`default`，`default` 表示不传字段、回退宿主默认）；provider/模型不支持 reasoning 控制时自动去掉该字段重试一次（避免因 `UNSUPPORTED_REASONING_EFFORT` 变成漏审）；12000→24000 的 max-tokens 重试同样保持该设置。
+- **测试**：新增 `test/review-effort.test.mjs`（默认 off / 可配置 / 不支持时回退 / max-tokens 重试仍 off / 默认值），`npm test` 现为 11 个测试文件。
+- **诚实边界**：本次修复在**仓库构建产物 + 真实宿主 LlmRuntime 重放**上验证；live profile 里运行的仍是 0.6.0，需要重新安装并再次重启 DSH 才会生效。重放中 `off` 模式有一次出现审核 JSON 两次不被接受、走了旧的 compact 兜底（裸 approve）——说明关闭 thinking 后**格式稳定性可能下降**；需要更强审核质量时可把 `reviewReasoningEffort` 设为 `low`（实测同一包 99s、能给出有效 verify，但慢且消耗更多）。该权衡尚未在真实会话中长跑验证。
+
 ## 0.6.0（危险变更闸门）
 
 - 新增危险变更闸门 `guardLiveMutation`（默认 `true`）与受保护路径列表 `liveMutationPaths`（默认 `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows`；大小写与斜杠不敏感）。闸门在最终审核前用纯函数扫描本轮工具轨迹，识别：写 live profile / plugins；在 live 路径执行 `pnpm`/`npm`/`yarn`/`corepack` 的 `install`/`add`/`ci`/`rebuild`；执行仓库安装脚本 `node scripts/install-local.mjs`（它会写 `.dsh/plugins`）；杀进程 / 停服务 / 关机 / 重启；注册表 / 服务 / 自启动修改；递归删除；写系统目录（`Program Files`、`ProgramData`、`C:/Windows` 等）。

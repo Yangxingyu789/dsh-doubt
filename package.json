@@ -1,6 +1,6 @@
 {
   "name": "dsh-doubt",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "最终正文显示前审核实际工具证据；缺少验收时自动退回补查，无法验证时明确报告未完成。保留分层断言检查与文档溯源。",
   "type": "module",
   "main": "lib/index.js",
@@ -43,7 +43,7 @@
     "build": "tsc -p tsconfig.json",
     "watch": "tsc -p tsconfig.json --watch",
     "check": "tsc -p tsconfig.json --noEmit",
-    "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs && node test/operations.test.mjs && node test/segments.test.mjs && node test/review-draft.test.mjs && node test/guard.test.mjs",
+    "test": "node test/scanner.test.mjs && node test/verify.test.mjs && node test/local.test.mjs && node test/evidence.test.mjs && node test/factored.test.mjs && node test/loop.test.mjs && node test/operations.test.mjs && node test/segments.test.mjs && node test/review-draft.test.mjs && node test/guard.test.mjs && node test/review-effort.test.mjs",
     "smoke": "node test/smoke.mjs",
     "audit": "node scripts/audit.mjs",
     "host:unpack": "node scripts/unpack-host.mjs",
