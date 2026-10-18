@@ -273,6 +273,8 @@ This table records the evidence for every claim introduced by the 0.7.0–0.8.2 
 | 14 | The session-launched watcher is terminated when DSH exits | Two observations only (log contains only the start line; process absent after restart); no process-tree or host-log evidence | **unsourced (inference)** |
 | 15 | The rollback commands are executable | Backups verified to exist (`install-backup-20261018-133825` → 0.6.3; `offline-upgrade-backup-20261018-170025` → 0.7.0), but the copy/`pnpm` commands were not executed | **unsourced (not run)** |
 
+Note: the command outputs cited in rows 7, 8 and 12 are session measurements; only the upgrade log in row 12 is persisted in this repository — rerun `npm test` / `test/guard.test.mjs` to reproduce the others.
+
 ## Provenance gate
 
 Claim-level verification is nearly useless on prose documents: measured on a real 46k-character
