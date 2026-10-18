@@ -104,8 +104,8 @@ const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: f
 {
   const c = normalizeConfig({})
   assert.equal(c.reviewReasoningEffort, 'off')
-  assert.equal(c.reviewMaxChars, 48000)
-  console.log('  ✓ 默认配置：reviewReasoningEffort=off，reviewMaxChars=48000')
+  assert.equal(c.reviewMaxChars, 120000)
+  console.log('  ✓ 默认配置：reviewReasoningEffort=off，reviewMaxChars=120000')
 }
 
 console.log('review-effort.test OK：默认 off / 可配置 / 不支持时回退 / max-tokens 重试仍 off 全部符合预期')

@@ -43,8 +43,9 @@ export interface DoubtConfig {
   operationMaxRounds: number
   /** 独立审核超时（ms，两次尝试各自计时）；超时不能放行未经审核的草稿 */
   reviewTimeoutMs: number
-  /** 审核请求的字符上限。审核输入基本是中文正文与工具证据，字符量级≈token 量级，
-   *  120k 字符实测会让审核调用超过 60s 而超时（REVIEW_TIMEOUT → 回答被扣留） */
+  /** 审核请求的字符上限。审核输入基本是中文正文与工具证据，字符量级≈token 量级。
+   *  提高后可把更多历史证据装进审核包，减少「证据不在包里」式打回；代价是审核更慢/更贵。
+   *  审核已关闭 thinking（reviewReasoningEffort=off），历史记录最多占 1/3 预算。 */
   reviewMaxChars: number
   /** 分段审核：单包装不下证据时，把草稿按段拆成多次审核，避免整轮 fail-open */
   segmentedReview: boolean
@@ -110,7 +111,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   requireOperationEvidence: true,
   operationMaxRounds: 3,
   reviewTimeoutMs: 120_000,
-  reviewMaxChars: 48_000,
+  reviewMaxChars: 120_000,
   segmentedReview: true,
   reviewReasoningEffort: 'off',
   guardLiveMutation: true,

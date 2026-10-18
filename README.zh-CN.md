@@ -115,7 +115,7 @@ pnpm install --offline
 | `requireOperationEvidence` | `true` | 显示前独立审核全文与工具证据，不依赖关键词或字数 |
 | `operationMaxRounds` | `3` | 每个宿主 turn 退回补查上限（0–5）；0 仍审核但不重试。实测一条长回答需要第三稿才可能通过审核，故由 2 提到 3 |
 | `reviewTimeoutMs` | `120000` | 单次审核超时（最多两次尝试）；超时不放行原稿，但会去掉历史记录重试一次 |
-| `reviewMaxChars` | `48000` | 审核请求字符上限（中文按字≈token）。历史记录最多只占 1/4，避免请求顶满上限而超时 |
+| `reviewMaxChars` | `120000` | 审核请求字符上限（中文按字≈token）。由 48000 提高，让更多历史证据进包（历史最多占 1/3 预算）；审核已关闭 thinking，预算留给判定。代价：审核调用更慢/更大 |
 | `segmentedReview` | `true` | 整包装不下时按段审核长草稿（见「操作取证闸」）；`false` 回退单包路径 |
 | `reviewReasoningEffort` | `off` | 审核调用的 reasoning effort。宿主 DeepSeek adapter 在未指定时默认 `high` + thinking，而 thinking 与 `max_tokens` 共用预算；实测第 1 次尝试 12000 输出 token 全花在 thinking 上、可见正文 0 字符 → `max-tokens`。`off` 把预算留给 JSON 判定；`default` 回退宿主默认 |
 | `guardLiveMutation` | `true` | 审核前的确定性危险变更闸门（见「危险变更闸门」）；`false` 完全回退旧行为 |
@@ -222,6 +222,8 @@ pnpm install --offline
 **分段审核（`segmentedReview`，默认 `true`）**：整包（草稿 + 本轮证据）超出 `reviewMaxChars` 时，按 `draftParts` 把草稿切成最多 6 段，每段单独打包审核，每包能留更多空间给证据。任一段返回 `verify` 立即返回意见；某段审核服务失败时只披露未审完的段（「只有部分段落完成审核…」），不再整轮失败；装得下的草稿仍走原单包路径。`segmentedReview: false` 回退旧单包路径（可能超出预算并按 `INPUT_LIMIT` 失败关闭）。由受控 reviewer 测试覆盖（`test/segments.test.mjs`、`test/review-draft.test.mjs`）；真实长任务效果尚未实测。
 
 **审核器的思考预算（`reviewReasoningEffort`，默认 `off`）**：审核调用原本不指定 reasoning 控制，宿主 DeepSeek adapter 会默认 effort=`high` 并开启 thinking（`dsh-llm-deepseek`：`options.reasoningEffort ?? connection.defaults.reasoningEffort ?? "high"`），而 thinking token 与 `max_tokens` 共用。用本机已落盘的 turn 4 审核包（52,672 字符 / 7 段）经真实宿主 `LlmRuntime` 重放复现：第 1 次尝试（12,000 token）**可见正文 0 字符**、finish=`max-tokens`；同一包 effort=`off` 在 2.9s / 325 output tokens 内给出有效判定。插件现在显式发送 `reasoningEffort`（默认 `off`），provider 不支持时自动去掉该字段重试，24,000 token 的重试也保持该设置；`default` 回退宿主默认（旧行为）。由 `test/review-effort.test.mjs` 覆盖；要真正在桌面宿主生效需要重新安装 + 重启。
+
+**审核范围与预算（0.6.3）**：只有用户会据此行动的事实才必须有工具依据（实际执行的命令、路径、版本、标识、实测结果、完成/后置条件断言、当前环境状态）。叙述、背景、设计理由与总结不需要逐句引文，审核器不得仅因解释性文字缺少引文就返回 `verify`。`reviewMaxChars` 提高到 120000，让更多历史证据进入审核包；审核意见最多 3 条且必须能用包内记录修复。目标是最新实测到的剩余失败模式：长回答连续 3 次 `verify`（每次恰好 3 条意见）耗尽回执预算后按设计放行并附「自动补查预算已用尽」横幅。已由 `test/operations.test.mjs` 的指令断言覆盖；真实长回答效果需安装后实测。
 
 **成本和边界**：每次最终回答增加模型调用和等待，包括短回答；输出截断最多再审核一次。审核用量目前不并入原回答 token 统计。带工具调用的中间正文会暂缓显示，工具照常经过宿主执行/审批流程；最终回答统一审核。已写入磁盘的文档仍使用原溯源规则。DeepSeek 思考内容/签名为协议继续执行而保留，不是审核后的最终正文。PTC-only 未暴露回执工具、未知思考回放协议不支持自动补查。材料是本轮文本工具证据，不能代替图像验收或完整历史任务管理。审核服务故障仍会阻止最终草稿显示，但不会误称“自动取证用尽”或要求重新操作。模型审核会漏判/误判，不保证消除幻觉。
 
@@ -370,7 +372,7 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
 | 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.6.2，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.2` |
+| 2 | 版本 0.6.3，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.3` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |

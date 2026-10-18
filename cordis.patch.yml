@@ -37,10 +37,10 @@
         # 长回答的回执补查预算：2 太容易在一次多断言回答里被耗尽（实测 turn 9 连续两次
         # verify 后只剩「补查预算用尽」横幅）。3 给多断言回答留一轮修复空间。
         operationMaxRounds: 3
-        # 审核输入是中文正文+工具证据，字符量级≈token 量级：
-        # 120k 字符实测会让审核调用超过 60s（REVIEW_TIMEOUT → 回答被扣留）。
+        # 审核输入是中文正文+工具证据，字符量级≈token 量级。
+        # 120k：让更多历史证据进包，减少「证据不在包里」式打回；审核已关闭 thinking。
         reviewTimeoutMs: 120000
-        reviewMaxChars: 48000
+        reviewMaxChars: 120000
         # 长草稿分段审核：单包装不下证据时按段拆成多次审核，避免整轮 fail-open
         segmentedReview: true
         # 审核调用的 reasoning effort：宿主 DeepSeek adapter 未指定时默认 high + thinking，

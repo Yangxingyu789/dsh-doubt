@@ -329,6 +329,8 @@ hHistory.installed.dispose()
   assert.ok(systemText.includes('Review scope:'), 'review instruction must define the review-scope contract')
   assert.ok(systemText.includes('never return verify merely because records were omitted'), 'omitted records are not author gaps')
   assert.ok(systemText.includes('at most 3 concrete gaps'), 'issue list must stay bounded')
+  assert.ok(systemText.includes('Materiality — which claims need evidence'), 'review instruction must scope what needs evidence')
+  assert.ok(systemText.includes('never return verify merely because such prose lacks its own quote'), 'narrative text does not need per-sentence quotes')
 }
 
 // Relevance-aware history: a long session omits most historical calls. The record the
