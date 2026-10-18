@@ -16,7 +16,8 @@
 #   -Repo    C:\work\dsh-doubt   仓库路径（默认本脚本上一级）
 param(
   [string]$Profile = 'desktop',
-  [string]$Repo = (Split-Path -Parent $PSScriptRoot)
+  [string]$Repo = (Split-Path -Parent $PSScriptRoot),
+  [switch]$DryRun
 )
 $ErrorActionPreference = 'Stop'
 # 兼容被旧版 watcher 以错误 -Repo 调用的情况：找不到 package.json 时回退到脚本所在仓库。
@@ -28,12 +29,13 @@ Write-Host "== dsh-doubt offline upgrade =="
 Write-Host "repo   : $Repo"
 Write-Host "profile: $Profile"
 
-# 1) 宿主必须完全退出
+# 1) 宿主必须完全退出（-DryRun 只读自检时允许宿主运行）
 $running = Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue
-if ($running) {
+if ($running -and -not $DryRun) {
   Write-Host "FAIL: DeepSeek Harness 仍在运行（PID: $($running.Id -join ', ')）。请先在任务管理器结束所有进程再运行本脚本。" -ForegroundColor Red
   exit 1
 }
+if ($running) { Write-Host "WARN: host is running (DryRun only, no changes will be made): $($running.Id -join ', ')" }
 
 $homeDir = if ($env:DSH_HOME) { $env:DSH_HOME } else { Join-Path $env:USERPROFILE '.dsh' }
 $pluginDir = Join-Path $homeDir 'plugins\dsh-doubt'
@@ -41,8 +43,9 @@ $profileDir = Join-Path $homeDir "profiles\$Profile"
 if (-not (Test-Path $profileDir)) { Write-Host "FAIL: profile 不存在：$profileDir" -ForegroundColor Red; exit 1 }
 if (-not (Test-Path (Join-Path $Repo 'package.json'))) { Write-Host "FAIL: 仓库路径不对：$Repo" -ForegroundColor Red; exit 1 }
 
-$repoPkg = Get-Content (Join-Path $Repo 'package.json') -Raw | ConvertFrom-Json
+$repoPkg = [System.IO.File]::ReadAllText((Join-Path $Repo 'package.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 Write-Host "target version: $($repoPkg.version)"
+$current = if (Test-Path (Join-Path $pluginDir 'package.json')) { ([System.IO.File]::ReadAllText((Join-Path $pluginDir 'package.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json).version } else { 'not-installed' }
 
 # 1b) 解析要用的可执行文件：watcher 可能由 WMI/服务上下文启动，PATH 不一定与交互会话一致。
 $nodeExe = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
@@ -53,6 +56,12 @@ if (-not $pnpmExe) { foreach ($c in @("$env:APPDATA\npm\pnpm.cmd", "$env:USERPRO
 if (-not $pnpmExe) { Write-Host 'FAIL: 找不到 pnpm.cmd（无法离线安装 profile 依赖）' -ForegroundColor Red; exit 1 }
 $gitExe = (Get-Command git.exe -ErrorAction SilentlyContinue).Source
 Write-Host "tools: node=$nodeExe pnpm=$pnpmExe git=$gitExe"
+
+# 1c) -DryRun：只读自检（可在宿主运行时执行，不写任何文件）
+if ($DryRun) {
+  Write-Host "DRYRUN OK: old=$current new=$($repoPkg.version) node=$nodeExe pnpm=$pnpmExe (no files changed)"
+  exit 0
+}
 
 # 2) 构建（脚本自己编译，避免装到旧产物）
 Write-Host '-- build (tsc) --'
@@ -69,7 +78,6 @@ foreach ($f in @('package.json','pnpm-lock.yaml','cordis.patch.yml')) {
   $src = Join-Path $profileDir $f
   if (Test-Path $src) { Copy-Item $src (Join-Path $backup "profile-files\$f") -Force }
 }
-$current = if (Test-Path (Join-Path $pluginDir 'package.json')) { (Get-Content (Join-Path $pluginDir 'package.json') -Raw | ConvertFrom-Json).version } else { 'not-installed' }
 $repoHead = if ($gitExe) { try { (& $gitExe -C $Repo rev-parse HEAD) } catch { 'unknown' } } else { 'unknown' }
 @(
   "backup_time=$stamp"
@@ -95,7 +103,7 @@ try { & $pnpmExe install --offline } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { Write-Host 'FAIL: pnpm install --offline 失败（pnpm store 可能不完整）' -ForegroundColor Red; exit 1 }
 
 # 5) 校验：版本 + 逐文件 hash
-$installedPkg = Get-Content (Join-Path $pluginDir 'package.json') -Raw | ConvertFrom-Json
+$installedPkg = [System.IO.File]::ReadAllText((Join-Path $pluginDir 'package.json'), [System.Text.Encoding]::UTF8) | ConvertFrom-Json
 $repoLib = Get-ChildItem (Join-Path $Repo 'lib') -Recurse -File
 $diff = @()
 foreach ($f in $repoLib) {
