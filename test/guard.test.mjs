@@ -84,6 +84,22 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ 递归删除细化：temp/$env:TEMP/仓库 workdir 放行；系统目录/盘根/live 路径/未知目标拦截')
 }
 {
+  // 写入方向：从 live 路径复制出来（备份）是只读；复制/写入进 live 路径才是变更。
+  const cases = [
+    [`Copy-Item 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt' 'E:\\dsh-doubt\\_diag\\backup' -Recurse -Force`, false, 'copy OUT of live path (backup) must be allowed'],
+    [`Copy-Item 'E:\\dsh-doubt\\lib' 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt\\lib' -Recurse -Force`, true, 'copy INTO live path must be flagged'],
+    [`Set-Content -Path 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop\\x.yml' -Value 'x'`, true, 'content write into live path must be flagged'],
+    [`Get-Content 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop\\cordis.yml' > 'E:\\dsh-doubt\\_diag\\out.txt'`, false, 'redirect OUT of live path (read-only source) must be allowed'],
+    [`Get-Content 'E:\\dsh-doubt\\README.md' > 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop\\x.txt'`, true, 'redirect INTO live path must be flagged'],
+  ]
+  for (const [command, expected, label] of cases) {
+    const events = [call('w', 'pwsh', { command }), result('w', 'done')]
+    const found = detectLiveMutations(events, turn, cfg)
+    assert.equal(found.length > 0, expected, `${label}: ${command} → ${JSON.stringify(found.map((f) => f.rule))}`)
+  }
+  console.log('  ✓ 写入方向：live→备份放行；仓库/临时→live 拦截；重定向同方向判定')
+}
+{
   const events = [call('e', 'pwsh', { command: 'Stop-Process -Name "DeepSeek Harness"' }), result('e', 'done')]
   assert.deepEqual(rulesOf(events), ['process-control'])
   console.log('  ✓ pwsh Stop-Process → process-control')

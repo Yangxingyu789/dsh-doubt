@@ -170,6 +170,42 @@ function dangerousDeleteTarget(target: string, workdir: string, config: DoubtCon
   return true
 }
 
+/** Non-flag path-ish tokens after a verb (flags like -Recurse / -Force or /s are skipped). */
+function pathTokens(text: string): string[] {
+  const tokens = text.match(/"[^"]*"|'[^']*'|[^\s;|]+/g) ?? []
+  const out: string[] = []
+  for (const raw of tokens) {
+    const token = raw.replace(/^["']|["']$/g, '')
+    if (!token) continue
+    if (/^[-/]/.test(token)) continue
+    if (/^(?:&&|\|\||\||;)/.test(token)) continue
+    out.push(token)
+    if (out.length >= 6) break
+  }
+  return out
+}
+
+/** Destination a shell command writes to; undefined when the shape is not recognized.
+ *  Direction matters: copying the live plugin directory OUT to a backup is read-only,
+ *  while copying anything INTO a live path is a mutation. */
+function writeDestination(command: string): string | undefined {
+  const redirect = /(?:^|[\s|;)])(?:>{1,2})\s*([^\s>&]+)/.exec(command)
+  if (redirect) return redirect[1]
+  const copy = /\b(copy-item|move-item|cp|mv|xcopy|robocopy)\b/i.exec(command)
+  if (copy) {
+    const tokens = pathTokens(command.slice(copy.index + copy[0].length))
+    return tokens[tokens.length - 1]
+  }
+  const content = /\b(set-content|out-file|add-content|new-item|tee)\b/i.exec(command)
+  if (content) {
+    const pathFlag = /-(?:path|literalpath|filepath|destination)\s+["']?([^"'\s;|]+)/i.exec(command)
+    if (pathFlag) return pathFlag[1]
+    const tokens = pathTokens(command.slice(content.index + content[0].length))
+    return tokens[tokens.length - 1]
+  }
+  return undefined
+}
+
 function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFinding[] {
   if (!SHELL_TOOLS.has(call.name)) return []
   const workdir = firstString(call.args, WORKDIR_KEYS) ?? ''
@@ -194,7 +230,14 @@ function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFindin
       if (dangerous) add('delete', 'recursive-delete', command)
     }
     if (live && RE_MUTATION_VERB.test(mutationText)) {
-      add(RE_DELETE_VERB.test(mutationText) ? 'delete' : 'write', 'live-path-shell-mutation', command)
+      if (RE_DELETE_VERB.test(mutationText)) {
+        add('delete', 'live-path-shell-mutation', command)
+      } else {
+        const destination = writeDestination(command)
+        // Unknown destination keeps the conservative behavior; a live path used only as
+        // a copy source (e.g. backing up the live plugin directory) is read-only.
+        if (destination === undefined || isLivePath(destination, config)) add('write', 'live-path-shell-mutation', command)
+      }
     }
     if (RE_PROCESS.test(command)) add('process', 'process-control', command)
     if (RE_REG.test(command)) add('registry', 'registry-or-service', command)

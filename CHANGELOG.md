@@ -1,5 +1,12 @@
 # 更新日志
 
+## 0.8.1（写入方向判定 + 离线升级脚本）
+
+- **修误报：从 live 路径复制出来不是变更**。0.8.0 之前 `/当命令同时含 live 路径与写动词` 会一律判危险；实测连「备份 live 插件目录」的 `Copy-Item live → _diag` 都被执行前闸门拒绝。现在解析写入方向：`Copy-Item/Move-Item/cp/mv/xcopy/robocopy` 只看**目标**（最后一个路径 token）；`Set-Content/Out-File/Add-Content/New-Item/tee` 优先取 `-Path/-Destination`，否则取路径 token；重定向 `>` 只看重定向目标。live 路径只作为**只读来源**时不拦；写入目标命中 live 路径才拦；无法识别目标的形状仍保守拦截。
+- **新增 `scripts/upgrade-offline.ps1`**：执行前闸门按设计会在宿主运行时拒绝 live 安装/写入，因此升级必须离线。脚本在「DSH 完全退出」前提下：确认无宿主进程 → `tsc` 构建 → 备份当前插件与 profile 文件（`_diag\offline-upgrade-backup-<时间>`）→ 复制产物到 `plugins\dsh-doubt` → profile `pnpm install --offline` → 版本与 48 个 lib 文件 hash 校验 → 失败时打印可直接执行的回滚命令。
+- **测试**：新增「live→备份放行 / 仓库→live 拦截 / Set-Content 进 live 拦截 / 重定向方向」用例；`npm test` 11 文件、smoke、audit 13 项、host.test、host-loop 四模式全部 exit 0（构建产物 0.8.1）。
+- **诚实边界**：写入方向解析是启发式的（token/正则），复杂脚本（变量拼接、管道中段、子 shell）可能被判为「无法识别」而保守拦截；`robocopy` 的方向识别只覆盖「目标为最后一个 token」的常见写法。
+
 ## 0.8.0（细化递归删除：临时/项目清理不再误拦）
 
 - **问题**：0.7.0 的执行前闸门对**所有** `Remove-Item -Recurse` / `rm -rf` 都要求审批或拒绝，实测连 `%TEMP%` 探测目录与 `rm -rf node_modules` 这类正常清理都会被拦，属于误报。
