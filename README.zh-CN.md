@@ -278,6 +278,7 @@ pnpm install --offline
 pnpm install            # 联网
 pnpm install --offline  # 已有 pnpm store 时
 npm run host:unpack     # 解包已安装 DSH 的 app.asar 供宿主级检查使用（自动定位安装目录，可用 --app 覆盖）
+npm run doctor          # 已安装插件是否与当前仓库一致、是否真的在运行（见下）
 npm run verify          # tsc 检查 + 构建 + 11 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判
 # 两个宿主测试与外部裁判需要已安装的桌面应用；找不到时打印 SKIP 并以 0 退出，不会误报失败。
 npm run verify:host
@@ -289,6 +290,18 @@ npm run eval:review -- --app <DSH安装目录> --account-home <DSH_HOME> --model
 需要**已解包宿主**的那几项，在宿主缺失、**陈旧或不完整**时会打印 `SKIP` 并说明原因：桌面应用
 升级后跑一次 `npm run host:unpack`，或用 `DSH_ASAR_DIR` 指向已有的解包目录。半个 asar 只会
 被报成 `SKIP`，不会被报成 `FAIL` —— 宿主副本里少了个模块，说明不了这个插件有问题。
+
+`npm run doctor` 回答另一个问题：**已安装的插件是否与当前仓库一致、是否真的在跑？** 实现参考了
+生态里 `dsh-verdict` 的 `doctor` 子命令（只做静态可判定的事，装载本身交给真实运行）。它打印
+PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 安装目录 / profile 链接三处
+`lib/` 是否逐字节一致；profile 的依赖与 bundle 行；安装版 `cordis.patch.yml` 是否为顶层
+`- insert:` 数组并声明 `guardLiveMutation` / `reviewReasoningEffort` / `segmentedReview`；
+组合后的 `cordis.yml` 是否含 `- id: dsh-doubt`；Node engine 范围。随后读取本机最新的会话存储
+（`session.v4.jsonl.zstd` 由一串独立 zstd 帧组成），只报告不判失败的运行证据：注入的提示词段
+（0.6.x 的「危险变更闸门」段）是否出现在落盘的 `system/message` 里、落盘最终回答中带
+「未经完整审核」横幅的条数（`banner,banner,…,clean` 展示最近六条）、以及真实会话里
+`verify_claims` / `doubt_review` 的调用次数。安装/重启后出现一条无横幅的回答，是「审核确实
+完成过」的行为证据——不代表审核判得对。`npm run doctor -- --json` 输出同样的 JSON。
 
 | 文件 | 职责 |
 |---|---|

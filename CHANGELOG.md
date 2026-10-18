@@ -7,7 +7,8 @@
 - **修复**：审核请求显式发送 `reasoningEffort`，新增配置 `reviewReasoningEffort`（默认 `off`；可选 `low`/`high`/`max`/`default`，`default` 表示不传字段、回退宿主默认）；provider/模型不支持 reasoning 控制时自动去掉该字段重试一次（避免因 `UNSUPPORTED_REASONING_EFFORT` 变成漏审）；12000→24000 的 max-tokens 重试同样保持该设置。
 - **测试**：新增 `test/review-effort.test.mjs`（默认 off / 可配置 / 不支持时回退 / max-tokens 重试仍 off / 默认值），`npm test` 现为 11 个测试文件。
 - **附带修复（同一提交系列）**：闸门的「用户确认点」原先要求最后一条真人请求**同句**同时含确认词与动作词，导致用户对安装询问只回复「确认」时被误判为缺失。现在单独一句 `确认 / 批准 / 同意 / 允许 / 授权 / OK / yes` 也算明确授权（`src/guard.ts` 的 `confirmationSeen`，`test/guard.test.mjs` 已加断言）；草稿里自称「已确认」仍然不算。
-- **诚实边界**：本次修复在**仓库构建产物 + 真实宿主 LlmRuntime 重放**上验证；live profile 里运行的仍是 0.6.0，需要重新安装并再次重启 DSH 才会生效。重放中 `off` 模式有一次出现审核 JSON 两次不被接受、走了旧的 compact 兜底（裸 approve）——说明关闭 thinking 后**格式稳定性可能下降**；需要更强审核质量时可把 `reviewReasoningEffort` 设为 `low`（实测同一包 99s、能给出有效 verify，但慢且消耗更多）。该权衡尚未在真实会话中长跑验证。
+- **新增 `npm run doctor`**（`scripts/doctor.mjs`）：一条命令核验「装上了没有、是不是真的在跑」。静态项：仓库/安装目录/profile 链接的版本与 `lib/` 逐字节一致、profile 依赖与 bundle、安装版 patch 为顶层 `- insert:` 且声明 `guardLiveMutation`/`reviewReasoningEffort`/`segmentedReview`、组合 `cordis.yml` 含 `- id: dsh-doubt`、Node engine；运行证据（只报告）：落盘 `system/message` 是否含 0.6.x 闸门提示词段、落盘回答的审核横幅统计（最近六条 `banner,…,clean`）、会话里 `verify_claims`/`doubt_review` 的实际调用次数。设计参考生态中 `dsh-verdict` 的 `verdict doctor`（静态可判定的事实 + 装载交给真实运行）。
+- **诚实边界**：本次修复在**仓库构建产物 + 真实宿主 LlmRuntime 重放 + 安装后会话行为**上验证（安装 0.6.1 并重启后，落盘回答的横幅序列从连续 `banner` 变为 `clean`；`npm run doctor` 实测 12 项静态检查全 PASS、`guardPromptInjected=true`）。重放中 `off` 模式有一次出现审核 JSON 两次不被接受、走了旧的 compact 兜底（裸 approve）——说明关闭 thinking 后**格式稳定性可能下降**；需要更强审核质量时可把 `reviewReasoningEffort` 设为 `low`（实测同一包 99s、能给出有效 verify，但慢且消耗更多）。该权衡尚未在真实会话中长跑验证；真实长任务下分段审核与闸门真实拦停效果仍未验证。
 
 ## 0.6.0（危险变更闸门）
 

@@ -287,6 +287,7 @@ It does **not** go through DSH's sandbox/approval chain — a known plugin-layer
 pnpm install            # online
 pnpm install --offline  # with a warm pnpm store
 npm run host:unpack     # unpack the installed app's app.asar for the host oracles (auto-detects the install; --app <dir> overrides)
+npm run doctor          # is the installed plugin aligned with this checkout, and is it actually running? (see below)
 npm run verify          # typecheck + build + 11 test suites + smoke + 13 repository checks + host suites + independent oracles
 # The two host suites and the independent oracles need the installed desktop app.
 # They auto-detect it and print SKIP (exit 0) when it is absent instead of failing.
@@ -307,6 +308,22 @@ were written together with the code. It judges the project only with outside ref
 | the provenance gate fires once per delivered document | this machine's own session logs, replayed through the real loop |
 | no `expr` payload can kill or hang the host | each payload in its own child process |
 | the silence-only guards never invent a refutation | a genuinely local missing path must still be refuted |
+
+`npm run doctor` answers a different question: **is the installed plugin aligned with this
+checkout and actually running?** It is modelled on the `doctor` subcommand of the ecosystem's
+`dsh-verdict` plugin (static facts only; the loader itself is left to a live session). It checks,
+and prints PASS/FAIL for: repo vs installed version and manifest version; byte-identical `lib/`
+between repo, the live install directory and the profile link; the profile dependency and bundle
+row; the installed `cordis.patch.yml` being a top-level `- insert:` array that declares
+`guardLiveMutation` / `reviewReasoningEffort` / `segmentedReview`; the composed `cordis.yml`
+row; and the Node engine range. It then reads this machine's newest session store (the
+`session.v4.jsonl.zstd` file is a sequence of independent zstd frames) and reports runtime
+evidence without failing on it: whether the injected prompt section (the 0.6.x guard section)
+appears in a stored `system/message`, how many stored final answers carried the
+"未经完整审核" banner (`banner,banner,…,clean` shows the last six), and how many live
+`verify_claims`/`doubt_review` calls the session recorded. A banner-free answer after an
+install/restart is behavioural evidence that the reviewer completed; it is not proof that the
+review was correct. `npm run doctor -- --json` emits the same data as JSON.
 
 Items needing the unpacked host app report `SKIP` with the reason when it is absent, **stale or
 incomplete**: run `npm run host:unpack` after a desktop update, or point `DSH_ASAR_DIR` at an
