@@ -1,4 +1,4 @@
-# dsh-doubt 升级启动器（ASCII 输出，始终留下控制台/日志，避免闪退看不到错误）
+﻿# dsh-doubt 升级启动器（ASCII 输出，始终留下控制台/日志，避免闪退看不到错误）
 param(
   [string]$Profile = 'desktop',
   [string]$Repo = 'C:\work\dsh-doubt',
