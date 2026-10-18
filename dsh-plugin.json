@@ -2,7 +2,7 @@
   "manifestVersion": "0.15",
   "id": "dsh-doubt",
   "name": "dsh-doubt",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "license": "MIT",
   "facets": {
     "host": {

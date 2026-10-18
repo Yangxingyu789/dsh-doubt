@@ -65,6 +65,10 @@ export interface DoubtConfig {
   /** 最终审核未完成时回答末尾的提示：banner=完整横幅与意见；short=一行简短提示；
    *  off=不显示（审核结论仍记录在插件内部状态）。默认 short，避免长回答总带长横幅。 */
   reviewNotice: 'banner' | 'short' | 'off'
+  /** 只对“有实质断言”的草稿调用模型审核：草稿里没有版本号/路径/命令/数字/
+   *  代码标识/完成状态等可核验断言时，直接确定性放行，省下一次（或多次）
+   *  审核 LLM 调用。默认 true；想强制每条回答都走模型审核时设为 false。 */
+  reviewMaterialOnly: boolean
   /** 受保护的 live 路径片段（大小写、斜杠不敏感）；空数组按默认值处理 */
   liveMutationPaths: string[]
   /** 本机查找 node_modules / package.json 的起点 */
@@ -123,6 +127,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   guardLiveMutation: true,
   guardPreExecute: true,
   reviewNotice: 'short',
+  reviewMaterialOnly: true,
   liveMutationPaths: ['.dsh/profiles', '.dsh/plugins', 'program files', 'programdata', 'c:/windows'],
   workspace: process.cwd(),
 
@@ -219,6 +224,7 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
     reviewNotice: src.reviewNotice === 'banner' || src.reviewNotice === 'short' || src.reviewNotice === 'off'
       ? src.reviewNotice
       : d.reviewNotice,
+    reviewMaterialOnly: bool(src.reviewMaterialOnly, d.reviewMaterialOnly),
     liveMutationPaths: strings(src.liveMutationPaths, d.liveMutationPaths).map((s) => s.trim()),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
 

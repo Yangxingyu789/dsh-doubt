@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { toolTrace } from '../lib/operations.js'
-import { createCompletionGuard, validateReview, reviewPacket, REVIEW_TOOL, draftParts, buildReviewPacket, reviewPayload } from '../lib/completion.js'
+import { createCompletionGuard, validateReview, reviewPacket, REVIEW_TOOL, draftParts, buildReviewPacket, reviewPayload, hasMaterialClaim } from '../lib/completion.js'
 import { normalizeConfig } from '../lib/config.js'
 const call = (id, name, args = {}) => ({ type: 'tool/call', data: { turn: 1, callId: id, name, arguments: JSON.stringify(args) } })
 const result = (id, text, extra = {}) => ({ type: 'tool/result', surfaceOp: 'append', data: { turn: 1, message: { toolCallId: id, source: { callId: id }, content: [{ type: 'text', text }], ...extra } } })
@@ -111,13 +111,22 @@ const pending = collect(await cancelled.run()); setTimeout(() => cancelled.contr
 await assert.rejects(pending); cancelled.installed.dispose()
 const smalltalk = harness({ draft: '你好。', trace: [], review: () => iterable(textChunks(JSON.stringify(approval('你好。', [], 'nonfactual')))) })
 assert.equal(visible(await collect(await smalltalk.run())), '你好。'); smalltalk.installed.dispose()
+// reviewMaterialOnly（默认 true）：无实质断言的草稿不调用审核模型，直接放行。
+const nonMaterial = harness({ draft: '你好。', trace: [], review: () => { throw Error('reviewer must not run for a non-material draft') } })
+assert.equal(visible(await collect(await nonMaterial.run())), '你好。', 'material-only must skip the reviewer')
+assert.equal(hasMaterialClaim('你好。'), false)
+assert.equal(hasMaterialClaim('目标文件存在。'), true, 'state assertions are material')
+nonMaterial.installed.dispose()
+// reviewMaterialOnly=false 时仍强制走模型审核（用于回归旧行为）。
+const forcedReview = harness({ draft: '你好。', trace: [], config: { reviewMaterialOnly: false }, review: () => iterable(textChunks(JSON.stringify(approval('你好。', [], 'nonfactual')))) })
+assert.equal(visible(await collect(await forcedReview.run())), '你好。'); forcedReview.installed.dispose()
 const fragmented = JSON.stringify(approval(packet.draft, refs))
 assert.equal((await reviewPacket(packet, {}, { stream: async function* () {
   for (let i = 0; i < 10000; i++) yield { type: 'reasoning-delta', index: 0, text: 'x' }
   for (const text of fragmented) yield { type: 'text-delta', index: 1, text }
   yield { type: 'finish', reason: { kind: 'stop' } }
 } }, normalizeConfig({ reviewMaxChars: 1000 }))).approved, true, 'protocol overhead/reasoning must not count as JSON response text')
-const replay = harness({ config: { reviewNotice: 'banner' }, review: () => iterable(textChunks('{"decision":"verify","issues":["missing check"]}')) })
+const replay = harness({ config: { reviewNotice: 'banner', reviewMaterialOnly: false }, review: () => iterable(textChunks('{"decision":"verify","issues":["missing check"]}')) })
 await replay.run()
 const nativeDraft = [
   { type: 'block-start', index: 0, blockType: 'reasoning' },

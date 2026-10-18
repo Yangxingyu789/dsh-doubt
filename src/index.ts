@@ -19,7 +19,7 @@ import { createCompletionGuard } from './completion.js'
 import { createPreflightGuard } from './preflight.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.8.2'
+export const version = '0.8.3'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'

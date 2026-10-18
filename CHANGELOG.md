@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.8.3（省 token：无实质断言的最终草稿跳过审核模型；新增 reviewMaterialOnly）
+
+- **动机**：最终回答审核是本插件最贵的一步——每条回答额外调用一次 reviewer（未通过还会重试最多 3 轮），审核包受 `reviewMaxChars`（默认 120k 字符）限制，长会话叠加工具轮数后 token 明显上升；纯闲聊/无断言回答不值得为此付一次审核调用。
+- **改动**：`src/completion.ts` 新增 `hasMaterialClaim()` 保守检测（版本号/路径/命令/数字/反引号标识/完成状态等）；`guardStream` 在调用 `reviewDraft` 前判断，草稿无任何实质断言时确定性放行并记录日志（省掉审核调用）；新配置 `reviewMaterialOnly: true`（设为 false 完全恢复旧行为），`cordis.patch.yml` 同步声明。
+- **测试**：`test/operations.test.mjs` 新增「非实质草稿不调用 reviewer（reviewer 抛错也不影响）」「状态断言仍审核」「reviewMaterialOnly=false 仍强制审核」；`tsc --noEmit`=0、build=0、`npm test` 11 文件 OK、smoke OK、audit 13 项且 `版本一致：0.8.3`、`host.test` Loaded 0.8.3、host-loop 四模式 PASS。
+- **诚实边界**：检测器是正则列表，存在漏判可能（例如极短的口语化断言），因此只用于「完全没有可核验断言」的草稿；有具体断言仍走模型审核。省 token 的幅度未逐调用量化，只保证这类草稿少一次审核调用。
+- **安装**：需再次离线升级（桌面 `dsh-doubt-upgrade.cmd`：先双击、再完全退出 DSH）才会装入 live；当前 live 仍是 0.8.2。
+
 ## 0.8.2（修复递归删除目标解析：命令行尾部的非路径 token 被误当成删除目标）
 
 - **实机发现**（0.8.1 运行时实测）：`Remove-Item 'C:\...\Temp\probe' -Recurse -Force; Write-Host "..."` 仍被 `recursive-delete` 拒绝。原因在 `deleteTargets`：取删除动词后的前 4 个非 flag token，把 `Write-Host` 和提示字符串也当成了“目标”，其中一个不是 temp/live/系统路径 → 保守判危险。

@@ -55,6 +55,9 @@
         guardPreExecute: true
         # 最终审核未完成时的末尾提示：banner=完整横幅+意见；short=一行；off=不显示
         reviewNotice: short
+        # 只对含实质断言（版本/路径/命令/数字/代码标识/状态断言）的草稿调用审核模型；
+        # 纯闲聊草稿确定性放行，省 token。想强制每条都审核可设为 false。
+        reviewMaterialOnly: true
 
         maxRounds: 2
         minScore: 6

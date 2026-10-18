@@ -10,6 +10,23 @@ import { toolTrace, type ToolTrace } from './operations.js'
 import { assessLiveMutation } from './guard.js'
 import type { PlainToolDefinition } from './tool.js'
 
+/** Conservative material-claim detector. The final-answer reviewer is the most
+ *  token-expensive part of this plugin, so skip it only when the draft contains no
+ *  actionable claim at all (no version/path/command/number/code identifier or
+ *  completion/state assertion). Anything material still goes to review. */
+const MATERIAL_CLAIM_PATTERNS: readonly RegExp[] = [
+  /\d+\.\d+/,
+  /[A-Za-z]:\\|\/(?:[\w.-]+\/)+|\.dsh[\\/]/i,
+  /\b(?:npm|pnpm|node|npx|git|tsc|pwsh|powershell|cmd|python|docker|curl|wget|pip|uv)\b/i,
+  /\d+\s*(?:%|ms|s\b|kb|mb|gb|条|次|行|个|文件)/i,
+  /`[^`\n]{2,}`/,
+  /(?:完成|成功|通过|安装|修复|删除|创建|写入|存在|生效|运行|失败|报错|已验证|已处理|已修复|已安装|可以|可用|正常|能够|没问题)/,
+  /\b(?:done|fixed|installed|verified|passed|failed|exists|completed)\b/i,
+]
+export function hasMaterialClaim(text: string): boolean {
+  return MATERIAL_CLAIM_PATTERNS.some((re) => re.test(text))
+}
+
 type Chunk = Record<string, any>
 type Message = Record<string, any>
 export interface ReviewPacket {
@@ -724,6 +741,15 @@ export function createCompletionGuard(getConfig: () => DoubtConfig, log: (...arg
     const events = current.agent.session?.snapshotEvents?.() ?? current.agent.session?.events ?? []
     const plan = cfg.segmentedReview ? planReviewChunks(draft, cfg.reviewMaxChars) : []
     log(`dsh-doubt：turn ${current.turn} 审核计划`, { draftChars: draft.length, segments: Math.max(1, plan.length), segmented: cfg.segmentedReview })
+    // Token saver: a draft with no actionable claims has nothing to ground, so a
+    // full reviewer call (up to reviewMaxChars chars) would be wasted. This is a
+    // deterministic pass, not a model review; it is logged as skipped.
+    if (cfg.reviewMaterialOnly && !hasMaterialClaim(draft)) {
+      current.reviewed = true
+      log(`dsh-doubt：turn ${current.turn} 草稿无实质可核验断言，跳过模型审核（省 token）`)
+      yield* chunks
+      return
+    }
     const outcome = await reviewDraft(events, current.turn, request.messages ?? [], draft, request, llm, cfg)
     const decision = outcome.decision
     const uncovered = outcome.uncovered

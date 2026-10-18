@@ -149,6 +149,7 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `guardLiveMutation` | `true` | Deterministic live-mutation gate before review (see "Live-mutation gate"); `false` restores the previous behaviour exactly |
 | `guardPreExecute` | `true` | Pre-execution gate on the host's `tools/pre-execute` waterfall: dangerous live mutations require host approval before the tool runs (`ask`), and are denied when no approval channel exists or the policy is `never` (see "Pre-execution guard"); `false` restores post-hoc disclosure only |
 | `reviewNotice` | `short` | Tail notice when final-answer review did not complete: `banner` = full notice + issues, `short` = one line, `off` = no notice (review result is still logged internally) |
+| `reviewMaterialOnly` | `true` | Skip the reviewer LLM call when the draft has no actionable claims (no version/path/command/number/identifier/state assertion); `false` forces review on every answer |
 | `liveMutationPaths` | `.dsh/profiles`, `.dsh/plugins`, `program files`, `programdata`, `c:/windows` | Protected path fragments for `guardLiveMutation` / `guardPreExecute` (case- and slash-insensitive) |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
 | `maxRounds` | `2` | Injection budget (reset by a new human message) |
@@ -280,20 +281,25 @@ Honest limits: the gate only recognizes the patterns in `liveMutationPaths` + th
 
 `reviewNotice` (default `short`) controls the trailing text when final-answer review does not complete: `banner` keeps the full notice with the reviewer's issues, `short` appends one line, `off` appends nothing. The review result is still logged internally; the setting only changes what the user sees.
 
-## Step-by-step provenance table (0.7.0–0.8.2)
+`reviewMaterialOnly` (default `true`) skips the reviewer LLM call entirely when the draft contains no actionable claim at all (no version/path/command/number/backticked identifier/state assertion); such drafts are released deterministically. Set it to `false` to force model review on every answer. This is a token-cost control, not a correctness guarantee: the detector is a deliberately conservative regex list, and any draft mentioning a concrete claim still goes to the reviewer.
 
-This table records the evidence for every claim introduced by the 0.7.0–0.8.2 changes. **Sourced** means a locally verifiable artifact (host source path + line, version number, or command output produced in this repository); **unsourced** means engineering judgement or inference and is kept on purpose. This section introduces no external URLs; the rows below were mechanically checked on 2026-10-18 (local file reads, `npm run doctor`, `npm test`, live tool outputs).
+## Step-by-step provenance table (0.7.0–0.8.3)
+
+This table records the evidence for every claim introduced by the 0.7.0–0.8.3 changes. **Sourced** means a locally verifiable artifact (host source path + line, version number, or command output produced in this repository); **unsourced** means engineering judgement or inference and is kept on purpose. This section introduces no external URLs; the rows below were mechanically checked on 2026-10-18 (local file reads, `npm run doctor`, `npm test`, live tool outputs).
 
 | # | Step / assertion | Evidence | Category |
 |---|---|---|---|
 | 1 | The host runs `tools/pre-execute` before the tool body and consumes `{kind:'allow'\|'ask'\|'deny'}` | Host bundle `%TEMP%\dsh-asar\dsh\node_modules\@deepseek-ai\dsh-tools\lib\types\index.js:885` (`ctx.waterfall(carrier,'tools/pre-execute',…)`) and `:1102` (`serviceAsk`); line content read | sourced |
 | 2 | `ask` is routed through the ApprovalService; missing channel or policy `never` → deny | Same host file `:1102`; live denial text “approval 缺失或策略为 never … 已拒绝执行” | sourced |
 | 3 | Defaults: `guardPreExecute: true`, `reviewNotice: 'short'` | `src/config.ts:64,67,124,125`; `normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | sourced |
-| 4 | Repository version is 0.8.2 in both manifests | `package.json` / `dsh-plugin.json` read → `0.8.2` / `0.8.2` | sourced |
-| 5 | Live installation is 0.8.1 (0.8.2 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`; `npm run doctor` → 13 PASS / 2 FAIL: `FAIL installed-version: repo=0.8.2 installed=0.8.1` and `FAIL lib-identical: … differing=4` (expected while the live install is 0.8.1) | sourced |
+| 4 | Repository version is 0.8.3 in both manifests | `package.json` / `dsh-plugin.json` read → `0.8.3` / `0.8.3` | sourced |
+| 5 | Live installation is 0.8.2 (0.8.3 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.2`; `npm run doctor` reports `installed-version: repo=0.8.3 installed=0.8.2` until the next offline upgrade | sourced |
 | 6 | 0.8.0 recursive-delete rule (temp roots allowed; system/live/drive-root/unknown conservative) | `src/guard.ts:166` (`dangerousDeleteTarget`); `test/guard.test.mjs` cases; `npm test` exit 0 | sourced |
 | 7 | 0.8.1 write-direction rule; rule id `live-path-shell-mutation` | `src/guard.ts:198` (`writeDestination`), `:241`, `:246`; guard tests; live copy-out `copy-out-executed=True`, `copied-version=0.8.1` | sourced |
 | 8 | 0.8.2 `deleteTargets` path-like-token filter; symbol `targets.some(...)` | `src/guard.ts:142`, `:231`, `:236`, `:237`; new guard tests; `npm test` 11 files OK | sourced |
+| 9 | 0.8.3 `reviewMaterialOnly` default `true`; reviewer skipped only for drafts with no material claim | `src/config.ts:71,130,227`; `src/completion.ts:17,26,747`; `test/operations.test.mjs` new cases (throwing reviewer never called for `你好。`; state assertion still reviewed) | sourced |
+| 10 | 0.8.3 release chain | `tsc --noEmit`=0, build=0, 11 test files OK, smoke OK, audit 13 items, `host.test` Loaded 0.8.3, host-loop 4 modes PASS | sourced |
+| 11 | Token saving magnitude of 0.8.3 | Not measured per-call; only the reviewer call is removed for non-material drafts (packet is bounded by `reviewMaxChars`). | unsourced (inference / not measured) |
 | 9 | Rule id `install-local-script` | `src/guard.ts:231` | sourced |
 | 10 | Live write into `.dsh/plugins/**` is denied by the gate | Live tool output: “危险变更闸门 … live-path-shell-mutation … 已拒绝执行” | sourced |
 | 11 | On 0.8.1 a literal temp `Remove-Item -Recurse` was still denied (`recursive-delete`) | Live tool output: “recursive-delete … 已拒绝执行” | sourced |
@@ -468,7 +474,7 @@ than quietly dropped.
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
 | 1 | 11 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 11 `node test/*.test.mjs`; rerun with `npm run verify` |
-| 2 | Version 0.8.2, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.8.2` |
+| 2 | Version 0.8.3, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.8.3` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |

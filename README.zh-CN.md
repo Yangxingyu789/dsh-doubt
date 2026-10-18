@@ -150,6 +150,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 
 | `guardLiveMutation` | `true` | 审核前的确定性危险变更闸门（见「危险变更闸门」）；`false` 完全回退旧行为 |
 | `guardPreExecute` | `true` | 执行前闸门（宿主 `tools/pre-execute` waterfall）：危险 live 变更在工具执行前要求宿主权限审批（`ask`）；无审批通道或策略为 `never` 时拒绝执行（见「执行前闸门」）；`false` 退回仅事后披露 |
 | `reviewNotice` | `short` | 最终审核未完成时的末尾提示：`banner`=完整横幅+意见，`short`=一行，`off`=不显示（审核结果仍在插件内部记录） |
+| `reviewMaterialOnly` | `true` | 草稿没有可核验断言时（版本/路径/命令/数字/标识/状态断言均无）跳过审核模型调用；`false` 强制每条回答都审核 |
 | `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | `guardLiveMutation` / `guardPreExecute` 的受保护路径片段（大小写、斜杠不敏感） |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
 | `maxRounds` | `2` | 注入轮数上限（人工发新消息即重置） |
@@ -304,20 +305,25 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 
 
 `reviewNotice`（默认 `short`）控制最终审核未完成时的末尾提示：`banner` 保留完整横幅与审核意见，`short` 追加一行，`off` 不追加任何提示。审核结果仍记录在插件内部，这个开关只改变用户看到的内容。
 
-## 逐步骤溯源表（0.7.0–0.8.2）
+`reviewMaterialOnly`（默认 `true`）：草稿里没有任何可核验断言时（无版本号/路径/命令/数字/反引号代码标识/状态断言），直接确定性放行，不调用审核模型；设为 `false` 则每条回答都走模型审核。这是省 token 的开关，不是正确性保证：检测器是保守的正则列表，只要草稿提到具体断言就仍会审核。
 
-本表逐条列出 0.7.0–0.8.2 变更中每条断言的依据。**有出处** = 本机可核对（宿主源码路径+行号、版本号、本仓库命令输出）；**无依据** = 工程经验或推断，保留在表中并显式标注。本节不引入外部链接；以下条目于 2026-10-18 机械核对（本地文件读取、`npm run doctor`、`npm test`、实机工具输出）。
+## 逐步骤溯源表（0.7.0–0.8.3）
+
+本表逐条列出 0.7.0–0.8.3 变更中每条断言的依据。**有出处** = 本机可核对（宿主源码路径+行号、版本号、本仓库命令输出）；**无依据** = 工程经验或推断，保留在表中并显式标注。本节不引入外部链接；以下条目于 2026-10-18 机械核对（本地文件读取、`npm run doctor`、`npm test`、实机工具输出）。
 
 | # | 步骤 / 断言 | 依据 | 分类 |
 |---|---|---|---|
 | 1 | 宿主在工具体执行前运行 `tools/pre-execute`，并消费 `{kind:'allow'\|'ask'\|'deny'}` | 宿主包 `%TEMP%\dsh-asar\dsh\node_modules\@deepseek-ai\dsh-tools\lib\types\index.js:885`（`ctx.waterfall(carrier,'tools/pre-execute',…)`）与 `:1102`（`serviceAsk`），行内容已读 | 有出处 |
 | 2 | `ask` 走 ApprovalService；无审批通道或策略 `never` → deny | 同一宿主文件 `:1102`；实机拒绝原文「approval 缺失或策略为 never … 已拒绝执行」 | 有出处 |
 | 3 | 默认值 `guardPreExecute: true`、`reviewNotice: 'short'` | `src/config.ts:64,67,124,125`；`normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | 有出处 |
-| 4 | 仓库版本 0.8.2（两个清单一致） | `package.json` / `dsh-plugin.json` 实测 → `0.8.2` / `0.8.2` | 有出处 |
-| 5 | live 安装版为 0.8.1（0.8.2 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`；`npm run doctor` → 13 PASS / 2 FAIL：`FAIL installed-version: repo=0.8.2 installed=0.8.1`、`FAIL lib-identical: … differing=4`（live 仍是 0.8.1 时的预期差异） | 有出处 |
+| 4 | 仓库版本 0.8.3（两个清单一致） | `package.json` / `dsh-plugin.json` 实测 → `0.8.3` / `0.8.3` | 有出处 |
+| 5 | live 安装版为 0.8.2（0.8.3 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.2`；`npm run doctor` 在下次离线升级前显示 `installed-version: repo=0.8.3 installed=0.8.2` | 有出处 |
 | 6 | 0.8.0 递归删除判定（temp 放行；系统/live/盘根/未知保守拦截） | `src/guard.ts:166`（`dangerousDeleteTarget`）；`test/guard.test.mjs` 用例；`npm test` exit 0 | 有出处 |
 | 7 | 0.8.1 写入方向判定；规则 id `live-path-shell-mutation` | `src/guard.ts:198`（`writeDestination`）、`:241`、`:246`；guard 测试；实机 copy-out `copy-out-executed=True`、`copied-version=0.8.1` | 有出处 |
 | 8 | 0.8.2 `deleteTargets` 只取路径状 token；符号 `targets.some(...)` | `src/guard.ts:142`、`:231`、`:236`、`:237`；新增 guard 用例；`npm test` 11 文件 OK | 有出处 |
+| 9 | 0.8.3 `reviewMaterialOnly` 默认 `true`；无可核验断言的草稿跳过审核 | `src/config.ts:71,130,227`；`src/completion.ts:17,26,747`；`test/operations.test.mjs` 新增用例（`你好。` 时抛错的 reviewer 不会被调用；状态断言仍审核） | 有出处 |
+| 10 | 0.8.3 发布链 | `tsc --noEmit`=0、build=0、11 测试文件 OK、smoke OK、audit 13 项、`host.test` Loaded 0.8.3、host-loop 四模式 PASS | 有出处 |
+| 11 | 0.8.3 的省 token 幅度 | 未逐调用测量；只对非实质草稿省掉一次审核调用（审核包受 `reviewMaxChars` 限制） | 无依据（推断/未测量） |
 | 9 | 规则 id `install-local-script` | `src/guard.ts:231` | 有出处 |
 | 10 | 实机写入 `.dsh/plugins/**` 被闸门拒绝 | 实机工具输出：「危险变更闸门 … live-path-shell-mutation … 已拒绝执行」 | 有出处 |
 | 11 | 0.8.1 下字面 temp 路径 `Remove-Item -Recurse` 仍被拒（`recursive-delete`） | 实机工具输出：「recursive-delete … 已拒绝执行」 | 有出处 |
@@ -439,7 +445,7 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
 | 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.8.2，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.8.2` |
+| 2 | 版本 0.8.3，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.8.3` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |
