@@ -530,6 +530,6 @@ Checked on 2026-10-19 before being written. This section has no external URLs, s
 | 3 | Historical mentions `0.8.1` / `0.8.2` was | those were the live versions at the time | CHANGELOG 0.8.1/0.8.2 entries and the handoff document; the historical host state cannot be re-observed now | unsourced (historical record, not re-verified) |
 | 4 | `scanAnswer(draft)` | symbol exists | `src/scanner.ts:240` → `export function scanAnswer(text: string, options: ScanOptions = {}): ScanResult {` | sourced |
 | 5 | `hasMaterialClaim(draft)` | symbol exists | `src/completion.ts:26` → `export function hasMaterialClaim(text: string): boolean {` | sourced |
-| 6 | `hasMaterialClaims` (plural) | does not exist; docs use the singular | repository-wide `Select-String` for `hasMaterialClaims` → 0 matches (this turn) | sourced (negative check) |
+| 6 | `hasMaterialClaims` (plural) | does not exist; docs use the singular | `Select-String` over `src/**` and `test/**` for `hasMaterialClaims` → 0 matches (this turn; the docs mention it only to record that it does not exist) | sourced (negative check) |
 | 7 | 0.8.3 test chain | 11 suites, audit 13 items, host loads 0.8.3, host-loop 4 modes | `npm test` exit 0 with 11 `.test OK` lines; `node scripts/audit.mjs` → 13 checks and `版本一致：0.8.3`; `test/host.test.mjs` → `Loaded 0.8.3`; four `host-loop.test.mjs` modes exit 0 | sourced |
 | 8 | 0.8.3 runtime behaviour | not verified | 0.8.3 is not installed in the live profile yet (live is 0.8.2) | unsourced (unverified) |
