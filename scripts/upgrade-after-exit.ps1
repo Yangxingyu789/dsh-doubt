@@ -13,7 +13,7 @@
 #   pwsh -NoProfile -ExecutionPolicy Bypass -File C:\work\dsh-doubt\scripts\upgrade-after-exit.ps1
 param(
   [string]$Profile = 'desktop',
-  [string]$Repo = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)),
+  [string]$Repo = (Split-Path -Parent $PSScriptRoot),
   [string]$AppPath = 'E:\dsh\DeepSeek Harness.exe',
   [int]$TimeoutMinutes = 30
 )

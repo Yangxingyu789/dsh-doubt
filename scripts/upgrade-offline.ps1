@@ -16,9 +16,13 @@
 #   -Repo    C:\work\dsh-doubt   仓库路径（默认本脚本上一级）
 param(
   [string]$Profile = 'desktop',
-  [string]$Repo = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot))
+  [string]$Repo = (Split-Path -Parent $PSScriptRoot)
 )
 $ErrorActionPreference = 'Stop'
+# 兼容被旧版 watcher 以错误 -Repo 调用的情况：找不到 package.json 时回退到脚本所在仓库。
+if (-not (Test-Path (Join-Path $Repo 'package.json'))) {
+  $Repo = Split-Path -Parent $PSScriptRoot
+}
 
 Write-Host "== dsh-doubt offline upgrade =="
 Write-Host "repo   : $Repo"
