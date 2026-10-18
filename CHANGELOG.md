@@ -339,3 +339,25 @@
 - **系统提示词段** `dsh-doubt:self-check`（order 3260）：要求先取证再断言，禁止用「一定 / 绝对 / 100%」掩盖没查过的结论。
 - **配置校验**：自带 StandardSchemaV1 校验器，`dsh --dump-config-schema` 可读到；profile 里可用 `cordis.patch.yml` 覆盖。
 - **测试**：`test/scanner.test.mjs`、`test/verify.test.mjs`、`test/loop.test.mjs`、`test/smoke.mjs` 四套，覆盖扫描判定、真实执行与超时、复核循环的轮数预算与免打扰、裸 cordis 加载。
+
+## 逐步骤溯源表（0.7.0–0.8.2）
+
+本表逐条列出 0.7.0–0.8.2 变更中每条断言的依据（2026-10-18 机械核对）。**有出处** = 本机可核对（宿主源码路径+行号、版本号、本仓库命令输出）；**无依据** = 工程经验或推断，保留并显式标注。本节不引入外部链接。
+
+| # | 步骤 / 断言 | 依据 | 分类 |
+|---|---|---|---|
+| 1 | 宿主在工具体执行前运行 `tools/pre-execute`，并消费 `{kind:'allow'\|'ask'\|'deny'}` | 宿主包 `%TEMP%\dsh-asar\dsh\node_modules\@deepseek-ai\dsh-tools\lib\types\index.js:885`（`ctx.waterfall(carrier,'tools/pre-execute',…)`）与 `:1102`（`serviceAsk`），行内容已读 | 有出处 |
+| 2 | `ask` 走 ApprovalService；无审批通道或策略 `never` → deny | 同一宿主文件 `:1102`；实机拒绝原文「approval 缺失或策略为 never … 已拒绝执行」 | 有出处 |
+| 3 | 默认值 `guardPreExecute: true`、`reviewNotice: 'short'` | `src/config.ts:64,67,124,125`；`normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | 有出处 |
+| 4 | 仓库版本 0.8.2（两个清单一致） | `package.json` / `dsh-plugin.json` 实测 → `0.8.2` / `0.8.2` | 有出处 |
+| 5 | live 安装版为 0.8.1（0.8.2 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`；`npm run doctor` → `FAIL installed-version: repo=0.8.2 installed=0.8.1`（13 PASS） | 有出处 |
+| 6 | 0.8.0 递归删除判定（temp 放行；系统/live/盘根/未知保守拦截） | `src/guard.ts:166`（`dangerousDeleteTarget`）；`test/guard.test.mjs` 用例；`npm test` exit 0 | 有出处 |
+| 7 | 0.8.1 写入方向判定；规则 id `live-path-shell-mutation` | `src/guard.ts:198`（`writeDestination`）、`:241`、`:246`；guard 测试；实机 copy-out `copy-out-executed=True`、`copied-version=0.8.1` | 有出处 |
+| 8 | 0.8.2 `deleteTargets` 只取路径状 token；符号 `targets.some(...)` | `src/guard.ts:142`、`:231`、`:236`、`:237`；新增 guard 用例；`npm test` 11 文件 OK | 有出处 |
+| 9 | 规则 id `install-local-script` | `src/guard.ts:231` | 有出处 |
+| 10 | 实机写入 `.dsh/plugins/**` 被闸门拒绝 | 实机工具输出：「危险变更闸门 … live-path-shell-mutation … 已拒绝执行」 | 有出处 |
+| 11 | 0.8.1 下字面 temp 路径 `Remove-Item -Recurse` 仍被拒（`recursive-delete`） | 实机工具输出：「recursive-delete … 已拒绝执行」 | 有出处 |
+| 12 | 0.7.0→0.8.1 升级执行了构建、备份、复制、`pnpm install --offline`、48 文件 hash 校验并重启 DSH | `_diag\upgrade-console.log` 2026-10-18 17:00:25 行（`installed version: 0.8.1  lib files: 48  diffs: 0`、`OK: 升级完成`、`started DeepSeek Harness`） | 有出处 |
+| 13 | 0.8.1 的 temp 删除被拒是 `deleteTargets` 把尾部 `Write-Host`/消息 token 当目标导致 | 代码路径 + 新测试可复现分类差异，但未对旧 0.8.1 构建加插桩重跑同一命令 | **无依据（推断）** |
+| 14 | 会话内启动的 watcher 在 DSH 退出时被结束 | 仅两次观测（日志只有 start 行、重启后进程不存在）；无进程树/宿主日志证据 | **无依据（推断）** |
+| 15 | 回滚命令可直接执行 | 备份实测存在（`install-backup-20261018-133825` → 0.6.3；`offline-upgrade-backup-20261018-170025` → 0.7.0），但复制/`pnpm` 命令未实际执行 | **无依据（未执行）** |

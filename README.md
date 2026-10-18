@@ -251,6 +251,28 @@ Honest limits: the gate only recognizes the patterns in `liveMutationPaths` + th
 
 `reviewNotice` (default `short`) controls the trailing text when final-answer review does not complete: `banner` keeps the full notice with the reviewer's issues, `short` appends one line, `off` appends nothing. The review result is still logged internally; the setting only changes what the user sees.
 
+## Step-by-step provenance table (0.7.0–0.8.2)
+
+This table records the evidence for every claim introduced by the 0.7.0–0.8.2 changes. **Sourced** means a locally verifiable artifact (host source path + line, version number, or command output produced in this repository); **unsourced** means engineering judgement or inference and is kept on purpose. This section introduces no external URLs; the rows below were mechanically checked on 2026-10-18 (local file reads, `npm run doctor`, `npm test`, live tool outputs).
+
+| # | Step / assertion | Evidence | Category |
+|---|---|---|---|
+| 1 | The host runs `tools/pre-execute` before the tool body and consumes `{kind:'allow'\|'ask'\|'deny'}` | Host bundle `%TEMP%\dsh-asar\dsh\node_modules\@deepseek-ai\dsh-tools\lib\types\index.js:885` (`ctx.waterfall(carrier,'tools/pre-execute',…)`) and `:1102` (`serviceAsk`); line content read | sourced |
+| 2 | `ask` is routed through the ApprovalService; missing channel or policy `never` → deny | Same host file `:1102`; live denial text “approval 缺失或策略为 never … 已拒绝执行” | sourced |
+| 3 | Defaults: `guardPreExecute: true`, `reviewNotice: 'short'` | `src/config.ts:64,67,124,125`; `normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | sourced |
+| 4 | Repository version is 0.8.2 in both manifests | `package.json` / `dsh-plugin.json` read → `0.8.2` / `0.8.2` | sourced |
+| 5 | Live installation is 0.8.1 (0.8.2 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`; `npm run doctor` → `FAIL installed-version: repo=0.8.2 installed=0.8.1` (13 PASS) | sourced |
+| 6 | 0.8.0 recursive-delete rule (temp roots allowed; system/live/drive-root/unknown conservative) | `src/guard.ts:166` (`dangerousDeleteTarget`); `test/guard.test.mjs` cases; `npm test` exit 0 | sourced |
+| 7 | 0.8.1 write-direction rule; rule id `live-path-shell-mutation` | `src/guard.ts:198` (`writeDestination`), `:241`, `:246`; guard tests; live copy-out `copy-out-executed=True`, `copied-version=0.8.1` | sourced |
+| 8 | 0.8.2 `deleteTargets` path-like-token filter; symbol `targets.some(...)` | `src/guard.ts:142`, `:231`, `:236`, `:237`; new guard tests; `npm test` 11 files OK | sourced |
+| 9 | Rule id `install-local-script` | `src/guard.ts:231` | sourced |
+| 10 | Live write into `.dsh/plugins/**` is denied by the gate | Live tool output: “危险变更闸门 … live-path-shell-mutation … 已拒绝执行” | sourced |
+| 11 | On 0.8.1 a literal temp `Remove-Item -Recurse` was still denied (`recursive-delete`) | Live tool output: “recursive-delete … 已拒绝执行” | sourced |
+| 12 | Upgrade 0.7.0→0.8.1 ran build, backup, copy, `pnpm install --offline`, 48-file hash check and restarted DSH | `_diag\upgrade-console.log` 2026-10-18 17:00:25 lines (`installed version: 0.8.1  lib files: 48  diffs: 0`, `OK: 升级完成`, `started DeepSeek Harness`) | sourced |
+| 13 | 0.8.1 temp-delete refusal was caused by `deleteTargets` treating trailing `Write-Host`/message tokens as targets | Code path + new test reproduce the classification difference, but the old 0.8.1 build was not re-run under instrumentation against the identical command | **unsourced (inference)** |
+| 14 | The session-launched watcher is terminated when DSH exits | Two observations only (log contains only the start line; process absent after restart); no process-tree or host-log evidence | **unsourced (inference)** |
+| 15 | The rollback commands are executable | Backups verified to exist (`install-backup-20261018-133825` → 0.6.3; `offline-upgrade-backup-20261018-170025` → 0.7.0), but the copy/`pnpm` commands were not executed | **unsourced (not run)** |
+
 ## Provenance gate
 
 Claim-level verification is nearly useless on prose documents: measured on a real 46k-character
