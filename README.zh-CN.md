@@ -285,7 +285,7 @@ pnpm install --offline
 | 2 | `ask` 走 ApprovalService；无审批通道或策略 `never` → deny | 同一宿主文件 `:1102`；实机拒绝原文「approval 缺失或策略为 never … 已拒绝执行」 | 有出处 |
 | 3 | 默认值 `guardPreExecute: true`、`reviewNotice: 'short'` | `src/config.ts:64,67,124,125`；`normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | 有出处 |
 | 4 | 仓库版本 0.8.2（两个清单一致） | `package.json` / `dsh-plugin.json` 实测 → `0.8.2` / `0.8.2` | 有出处 |
-| 5 | live 安装版为 0.8.1（0.8.2 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`；`npm run doctor` → `FAIL installed-version: repo=0.8.2 installed=0.8.1`（13 PASS） | 有出处 |
+| 5 | live 安装版为 0.8.1（0.8.2 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`；`npm run doctor` → 13 PASS / 2 FAIL：`FAIL installed-version: repo=0.8.2 installed=0.8.1`、`FAIL lib-identical: … differing=4`（live 仍是 0.8.1 时的预期差异） | 有出处 |
 | 6 | 0.8.0 递归删除判定（temp 放行；系统/live/盘根/未知保守拦截） | `src/guard.ts:166`（`dangerousDeleteTarget`）；`test/guard.test.mjs` 用例；`npm test` exit 0 | 有出处 |
 | 7 | 0.8.1 写入方向判定；规则 id `live-path-shell-mutation` | `src/guard.ts:198`（`writeDestination`）、`:241`、`:246`；guard 测试；实机 copy-out `copy-out-executed=True`、`copied-version=0.8.1` | 有出处 |
 | 8 | 0.8.2 `deleteTargets` 只取路径状 token；符号 `targets.some(...)` | `src/guard.ts:142`、`:231`、`:236`、`:237`；新增 guard 用例；`npm test` 11 文件 OK | 有出处 |

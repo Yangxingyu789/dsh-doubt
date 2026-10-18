@@ -261,7 +261,7 @@ This table records the evidence for every claim introduced by the 0.7.0–0.8.2 
 | 2 | `ask` is routed through the ApprovalService; missing channel or policy `never` → deny | Same host file `:1102`; live denial text “approval 缺失或策略为 never … 已拒绝执行” | sourced |
 | 3 | Defaults: `guardPreExecute: true`, `reviewNotice: 'short'` | `src/config.ts:64,67,124,125`; `normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | sourced |
 | 4 | Repository version is 0.8.2 in both manifests | `package.json` / `dsh-plugin.json` read → `0.8.2` / `0.8.2` | sourced |
-| 5 | Live installation is 0.8.1 (0.8.2 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`; `npm run doctor` → `FAIL installed-version: repo=0.8.2 installed=0.8.1` (13 PASS) | sourced |
+| 5 | Live installation is 0.8.1 (0.8.2 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.1`; `npm run doctor` → 13 PASS / 2 FAIL: `FAIL installed-version: repo=0.8.2 installed=0.8.1` and `FAIL lib-identical: … differing=4` (expected while the live install is 0.8.1) | sourced |
 | 6 | 0.8.0 recursive-delete rule (temp roots allowed; system/live/drive-root/unknown conservative) | `src/guard.ts:166` (`dangerousDeleteTarget`); `test/guard.test.mjs` cases; `npm test` exit 0 | sourced |
 | 7 | 0.8.1 write-direction rule; rule id `live-path-shell-mutation` | `src/guard.ts:198` (`writeDestination`), `:241`, `:246`; guard tests; live copy-out `copy-out-executed=True`, `copied-version=0.8.1` | sourced |
 | 8 | 0.8.2 `deleteTargets` path-like-token filter; symbol `targets.some(...)` | `src/guard.ts:142`, `:231`, `:236`, `:237`; new guard tests; `npm test` 11 files OK | sourced |
