@@ -84,6 +84,8 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
     call('o', 'ops_replace', { path: LIVE_PLUGIN_INDEX, dryRun: true }), result('o', 'dry-run ok'),
     call('q', 'pwsh', { command: 'pnpm --version' }), result('q', '12.10.1'),
     call('w', 'verify_claims', { checks: [{ kind: 'command', argv: ['node', '--version'] }] }), result('w', 'v24.21.0'),
+    // 只读 node -e：命令里出现 live 路径 + JS 箭头函数/比较运算符 + 2>&1，必须不判成 live 写入
+    call('js', 'pwsh', { command: `node -e "const fs=require('node:fs');const a=[1,2].map(x=>x).filter(x=>x>=1);const p=fs.readFileSync('C:/Users/Administrator/.dsh/profiles/desktop/cordis.patch.yml','utf8');console.log(a.length,p.length)" 2>&1 | Out-String` }), result('js', '2 1962'),
   ]
   assert.deepEqual(rulesOf(harmless), [])
   const assessment = assessLiveMutation({ events: harmless, turn, draft: '已完成。', config: cfg })

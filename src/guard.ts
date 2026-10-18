@@ -111,7 +111,12 @@ const RE_INSTALL = /\b(?:pnpm|npm|yarn|corepack)(?:\.cmd|\.exe)?\s+(?:install|i|
 const RE_INSTALL_LOCAL_TRIGGER = /\bnode(?:\.exe)?\b[^\n]*install-local(?:\.mjs|\.js)?/i
 const RE_INSTALL_LOCAL_NAME = /install-local(?:\.mjs|\.js)?/i
 const RE_RECURSIVE_DELETE = /\b(?:remove-item|rmdir|rd|del|erase|rm)\b[^\n]*(?:\s-recurse\b|\/s\b|\s-rf\b|\s-r\b)/i
-const RE_MUTATION_VERB = /\b(?:remove-item|del|erase|rmdir|rm|move-item|mv|copy-item|cp|set-content|out-file|add-content|new-item|tee)\b|(?:^|[\s\w)\]"])\s*>{1,2}\s*[^\s>]/i
+// Shell/JS source contains `=>`, `->`, `>=`, `<=` which are NOT shell redirects: a
+// read-only `node -e "...map(x => x)..."` that mentions a live path was once classified
+// as a live write and gated the answer. Drop arrow/comparison operators before testing
+// redirect-style writes.
+const stripOperators = (command: string): string => command.replace(/=>|->|>=|<=/g, ' ')
+const RE_MUTATION_VERB = /\b(?:remove-item|del|erase|rmdir|rm|move-item|mv|copy-item|cp|set-content|out-file|add-content|new-item|tee)\b|(?:^|[\s\w)\]"])\s*>{1,2}\s*[^\s>&]/i
 const RE_DELETE_VERB = /\b(?:remove-item|rmdir|rd|del|erase|rm)\b/i
 const RE_PROCESS = /\b(?:stop-process|taskkill|kill|shutdown|restart-computer|stop-service|sc\s+stop|net\s+stop)\b/i
 const RE_REG = /\breg\s+(?:add|delete|import|load|restore)\b/i
@@ -137,6 +142,7 @@ function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFindin
   for (const command of commandTexts(call.args)) {
     const context = `${command} ${workdir}`
     const live = isLivePath(context, config)
+    const mutationText = stripOperators(command)
     const installer = RE_INSTALL.exec(command)
     if (installer && live) add('install', 'install-into-live-profile', installer[0])
     // 本仓库安装脚本会写 .dsh/plugins，不需要命令里再出现 live 路径
@@ -144,8 +150,8 @@ function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFindin
       add('write', 'install-local-script', RE_INSTALL_LOCAL_NAME.exec(command)?.[0] ?? 'install-local')
     }
     if (RE_RECURSIVE_DELETE.test(command)) add('delete', 'recursive-delete', command)
-    if (live && RE_MUTATION_VERB.test(command)) {
-      add(RE_DELETE_VERB.test(command) ? 'delete' : 'write', 'live-path-shell-mutation', command)
+    if (live && RE_MUTATION_VERB.test(mutationText)) {
+      add(RE_DELETE_VERB.test(mutationText) ? 'delete' : 'write', 'live-path-shell-mutation', command)
     }
     if (RE_PROCESS.test(command)) add('process', 'process-control', command)
     if (RE_REG.test(command)) add('registry', 'registry-or-service', command)

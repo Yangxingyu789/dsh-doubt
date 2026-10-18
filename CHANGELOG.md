@@ -8,7 +8,8 @@
   - ① `operationMaxRounds` 默认与自带 patch 由 **2 → 3**：多断言长回答至少留一轮修复空间（profile 覆盖里也需同步，安装时一并改）。
   - ② `REVIEW_INSTRUCTION` 新增 **review-scope 契约**：`complete=false/omittedCalls>0/truncatedCalls>0` 表示这些记录**没有进入审核包**，属于本次审核的限制、不是作者的缺口，不得据此返回 `verify`（按契约应返回 `unavailable`）；不得要求作者重跑历史命令；草稿已明确标注「未验证」的点按 `unverified` 通过；解释性/背景文字不需要逐句引文；意见最多 3 条且必须能用包内记录修复。
   - ③ 历史记录选择改为 **relevance-aware**：按草稿里出现的路径 / 提交 id / 哈希 / 数字等标识给历史记录打分，优先纳入被引用记录，再按新到旧填满预算——避免「草稿引用了某条工具记录，但审核包只装了最新的几条历史」。
-- **测试**：`test/operations.test.mjs` 新增 3 组断言：review-scope 文案存在；relevance 选择让被引用的历史记录进入审核包（12 条更新的噪声记录竞争预算）；`operationMaxRounds` 默认 3。
+  - ④ 修 **guard 误报**：只读的 `node -e` 命令里同时出现 live 路径与 JS 箭头函数/比较运算符（`=>`、`>=`）或 `2>&1` 时，曾被判成 `live-path-shell-mutation`（实际发生于本窗口 turn 10 的只读会话分析命令），导致正常回答被要求补「回滚路径」。现在先剥离 `=>`/`->`/`>=`/`<=` 再判断写操作，且重定向目标为 `&`（fd 复制）不算文件写入；新增回归断言。
+- **测试**：`test/operations.test.mjs` 新增 3 组断言（review-scope 文案、relevance 选择、`operationMaxRounds` 默认 3）；`test/guard.test.mjs` 新增只读 `node -e`（含 live 路径 + `=>`/`>=`/`2>&1`）不命中的回归断言。
 - **实测**：把 turn 9 的 5,051 字符草稿在新逻辑下重算审核包，草稿引用的标识 `712408f` / `55ac312` / `612be03` / `install-backup-20261018-014908` / `guardPromptInjected` / `1F023565` / `answersWithReviewBanner` **全部出现在包内**；`npm test` / `smoke` / `audit` / `host.test` 全绿（0.6.2）。
 - **诚实边界**：这是针对「回执预算用尽」路径的修复；**尚未在真实长回答上重新观察**（需要安装 0.6.2 + 重启后再写一条长回答）。若装后仍出现横幅，下一步是把 `reviewMaxChars` 提到 120k 或把 `reviewReasoningEffort` 设为 `low`。
 
