@@ -224,7 +224,7 @@ The gate scans the current turn's tool trace with pure functions and recognizes 
 - running the repository install script `node scripts/install-local.mjs` (it writes `.dsh/plugins`);
 - killing processes, stopping services, `shutdown`, restarting the computer;
 - registry / service / autostart changes (`reg add`, `New-ItemProperty` under HKLM/HKCU, `schtasks /create`);
-- recursive deletes (`Remove-Item -Recurse`, `rm -rf`, `del /s`, …);
+- recursive deletes (`Remove-Item -Recurse`, `rm -rf`, `del /s`, …) — since 0.8.0 the target is parsed first: temp roots (`%TEMP%`, `$env:TEMP`, `/tmp/`, `/var/tmp/`) and recursive deletes under a supplied non-live working directory (e.g. `rm -rf node_modules`) are normal cleanup and are not gated; live paths, system directories, drive roots and commands whose target cannot be determined stay gated;
 - writes to system directories (the default protected fragments include `Program Files`, `ProgramData`, `C:/Windows`).
 
 If one is found, the draft cannot be released as a completed task until the author supplies all three artifacts. Missing any one produces a deterministic `verify` rejection **before any reviewer model call**; it is not a review-service failure and it does not trigger the "unreviewed" banner. The rejection lists exactly what is missing and arrives as a `doubt_review` receipt:
@@ -415,7 +415,7 @@ than quietly dropped.
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
 | 1 | 11 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 11 `node test/*.test.mjs`; rerun with `npm run verify` |
-| 2 | Version 0.7.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.7.0` |
+| 2 | Version 0.8.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.8.0` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |

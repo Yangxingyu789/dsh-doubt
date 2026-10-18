@@ -97,9 +97,10 @@ const patchPath = join(installed, 'cordis.patch.yml')
 if (existsSync(patchPath)) {
   const patch = readFileSync(patchPath, 'utf8')
   add('patch-is-array', /^\s*-\s+insert:/m.test(patch), 'installed cordis.patch.yml starts with a top-level `- insert:` list')
-  for (const key of ['guardLiveMutation', 'reviewReasoningEffort', 'segmentedReview']) {
+  for (const key of ['guardLiveMutation', 'guardPreExecute', 'reviewReasoningEffort', 'reviewNotice', 'segmentedReview']) {
     add(`patch-${key}`, new RegExp(`^\\s*${key}:`, 'm').test(patch), `installed patch declares ${key}`)
   }
+  add('preflight-module', existsSync(join(installed, 'lib', 'preflight.js')), 'installed lib contains preflight.js (pre-execute gate module)')
 } else {
   add('patch-is-array', false, `missing ${patchPath}`)
 }

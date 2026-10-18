@@ -63,7 +63,25 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   const findings = detectLiveMutations(events, turn, cfg)
   assert.deepEqual(findings.map((f) => f.rule), ['recursive-delete'])
   assert.equal(findings[0].kind, 'delete')
-  console.log('  ✓ pwsh Remove-Item -Recurse → recursive-delete')
+  console.log('  ✓ pwsh Remove-Item -Recurse（任意外部路径）→ recursive-delete')
+}
+{
+  // 执行前闸门启用后，常见项目/临时目录清理不应被拦：live/系统/盘根/未知目标才拦。
+  const cases = [
+    ['Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"', 'temp path must be allowed', false],
+    ['Remove-Item -Recurse -Force $env:TEMP\\probe', '$env:TEMP must be allowed', false],
+    ['rm -rf node_modules', null, false, 'E:\\dsh-doubt'],
+    ['Remove-Item -Recurse C:\\Windows\\System32\\drivers', 'system dir must be blocked', true],
+    ['Remove-Item -Recurse C:\\', 'drive root must be blocked', true],
+    ['Remove-Item -Recurse C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt', 'live path must be blocked', true],
+    ['Remove-Item -Recurse', 'unknown target must stay conservative', true],
+  ]
+  for (const [command, label, expected, workdir] of cases) {
+    const events = [call('x', 'pwsh', { command, ...(workdir ? { workdir } : {}) }), result('x', 'done')]
+    const found = detectLiveMutations(events, turn, cfg)
+    assert.equal(found.length > 0, expected, `${label}: ${command} → ${JSON.stringify(found.map((f) => f.rule))}`)
+  }
+  console.log('  ✓ 递归删除细化：temp/$env:TEMP/仓库 workdir 放行；系统目录/盘根/live 路径/未知目标拦截')
 }
 {
   const events = [call('e', 'pwsh', { command: 'Stop-Process -Name "DeepSeek Harness"' }), result('e', 'done')]
@@ -300,10 +318,16 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
     ['edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }],
     ['read', { file_path: LIVE_PLUGIN_INDEX }],
     ['pwsh', { command: 'node --version' }],
+    // 临时目录递归删除与仓库内递归清理不属于 live 危险变更：执行前闸门应放行
+    ['pwsh', { command: 'Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"' }],
+    ['pwsh', { command: 'rm -rf node_modules', workdir: 'E:\\dsh-doubt' }],
   ]) {
     const decision = await askGuard(execOf(name, args), allow)
-    assert.equal(decision.kind, 'allow', `${name} 普通操作应放行`)
+    assert.equal(decision.kind, 'allow', `${name} 普通操作应放行：${JSON.stringify(args)}`)
   }
+  // live 路径递归删除仍应 ask（有审批）或 deny（never）
+  assert.equal((await askGuard(execOf('pwsh', { command: `Remove-Item -Recurse ${LIVE_PROFILE}` }), allow)).kind, 'ask')
+  assert.equal((await noSeam(execOf('pwsh', { command: `Remove-Item -Recurse ${LIVE_PROFILE}` }), allow)).kind, 'deny')
 
   // 关闭开关：完全退回原行为
   const offGuard = createPreflightGuard(() => normalizeConfig({ guardPreExecute: false }), { approval: () => ({ overrideOf: () => 'ask' }) })

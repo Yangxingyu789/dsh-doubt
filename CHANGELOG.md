@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.8.0（细化递归删除：临时/项目清理不再误拦）
+
+- **问题**：0.7.0 的执行前闸门对**所有** `Remove-Item -Recurse` / `rm -rf` 都要求审批或拒绝，实测连 `%TEMP%` 探测目录与 `rm -rf node_modules` 这类正常清理都会被拦，属于误报。
+- **修复**：递归删除先解析目标再判定。以下情况**不拦截**：
+  - 目标是临时目录根：`%TEMP%`、`$env:TEMP`、`/tmp/`、`/var/tmp/`、`/private/tmp/`；
+  - 提供了非 live 工作目录，且目标是相对路径或在 workdir 之下（如 `rm -rf node_modules`）。
+  仍然**拦截**：live 路径（`.dsh/profiles`、`.dsh/plugins` 等）、系统目录（Windows/Program Files/ProgramData）、盘根，以及**无法确定目标**的递归删除（保守策略）。
+- **覆盖**：同一套规则同时用于事后扫描（`detectLiveMutations`）与执行前闸门（`classifyToolCall`/`preflight`），避免两处行为不一致；`test/guard.test.mjs` 增加 7 组递归删除目标判定 + 执行前闸门的放行/拦截用例。
+- **测试**：`npm test` 11 文件 / smoke / audit 13 项 / host.test / host-loop 四模式全部 exit 0。
+- **诚实边界**：目标解析是启发式的（token 扫描），路径变量（如 `$env:TEMP` 以外无法解析的变量）、引号嵌套等可能被判为「无法确定」而拦截；放行的「非 live workdir 下的相对路径」仍由最终回答审核与用户自己判断兜底。
+
 ## 0.7.0（执行前危险变更闸门 + 可配置的末尾提示）
 
 - **执行前闸门 `guardPreExecute`（默认 `true`）**：改用宿主 `@deepseek-ai/dsh-tools` 的 `tools/pre-execute` waterfall（`prepareExecution` → `guardReason` → `Error: <reason>`；`{kind:'ask'}` 走宿主 ApprovalService）。危险 live 变更在**工具执行之前**被拦截：

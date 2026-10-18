@@ -132,6 +132,44 @@ function writeFinding(call: ToolTrace, config: DoubtConfig): LiveMutationFinding
   return { callId: call.id, name: call.name, kind: 'write', target: clip(path), rule: 'live-path-write' }
 }
 
+const SYSTEM_DELETE_HINTS = ['windows', 'program files', 'programdata', 'system32', 'syswow64']
+/** POSIX temp roots (path-relative) and cross-platform temp variable markers. */
+const SAFE_DELETE_PREFIXES = ['/tmp/', '/var/tmp/', '/private/tmp/']
+const SAFE_DELETE_CONTAINS = ['$env:temp', '$env:tmp', '%temp%', '%tmp%', '/temp/']
+
+/** Extract the first non-flag argument after a delete verb; [] when no target is visible.
+ *  Flags like -Recurse/-Force or /s are skipped; quoted paths are unquoted. */
+function deleteTargets(command: string): string[] {
+  const verb = /\b(?:remove-item|rmdir|rd|del|erase|rm)\b/i.exec(command)
+  if (!verb) return []
+  const tail = command.slice(verb.index + verb[0].length)
+  const tokens = tail.match(/"[^"]*"|'[^']*'|[^\s;|]+/g) ?? []
+  const targets: string[] = []
+  for (const raw of tokens) {
+    const token = raw.replace(/^["']|["']$/g, '')
+    if (!token) continue
+    if (/^[-/]/.test(token)) continue // PowerShell/cmd flags (paths start with a drive letter)
+    if (/^(?:-|&&|\|\||\||;)/.test(token)) continue
+    targets.push(token)
+    if (targets.length >= 4) break
+  }
+  return targets
+}
+
+function dangerousDeleteTarget(target: string, workdir: string, config: DoubtConfig): boolean {
+  const t = norm(target)
+  if (isLivePath(target, config)) return true
+  if (SYSTEM_DELETE_HINTS.some((hint) => t.includes(hint))) return true
+  if (/^[a-z]:\/+$/.test(t)) return true // drive root
+  if (SAFE_DELETE_PREFIXES.some((hint) => t.startsWith(hint)) || SAFE_DELETE_CONTAINS.some((hint) => t.includes(hint))) return false
+  // A recursive delete under a supplied, non-live working directory is a normal
+  // project cleanup (e.g. `rm -rf node_modules`); do not gate it.
+  const relativeTarget = !/^[a-z]:[\\/]/i.test(target) && !target.startsWith('/') && !target.startsWith('\\')
+  if (workdir && !isLivePath(workdir, config) && (relativeTarget || t.startsWith(norm(workdir)))) return false
+  // Unknown / arbitrary external path: keep blocking (conservative).
+  return true
+}
+
 function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFinding[] {
   if (!SHELL_TOOLS.has(call.name)) return []
   const workdir = firstString(call.args, WORKDIR_KEYS) ?? ''
@@ -149,7 +187,12 @@ function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFindin
     if (RE_INSTALL_LOCAL_TRIGGER.test(command)) {
       add('write', 'install-local-script', RE_INSTALL_LOCAL_NAME.exec(command)?.[0] ?? 'install-local')
     }
-    if (RE_RECURSIVE_DELETE.test(command)) add('delete', 'recursive-delete', command)
+    if (RE_RECURSIVE_DELETE.test(command)) {
+      const targets = deleteTargets(command)
+      // No visible target (e.g. `Remove-Item -Recurse $var`) stays conservative → flagged.
+      const dangerous = targets.length === 0 ? true : targets.some((target) => dangerousDeleteTarget(target, workdir, config))
+      if (dangerous) add('delete', 'recursive-delete', command)
+    }
     if (live && RE_MUTATION_VERB.test(mutationText)) {
       add(RE_DELETE_VERB.test(mutationText) ? 'delete' : 'write', 'live-path-shell-mutation', command)
     }

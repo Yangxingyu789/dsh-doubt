@@ -248,7 +248,7 @@ pnpm install --offline
 - 执行仓库安装脚本 `node scripts/install-local.mjs`（它会写 `.dsh/plugins`）；
 - 杀进程、停服务、`shutdown`、重启电脑；
 - 改注册表 / 服务 / 自启动（`reg add`、HKLM/HKCU 下的 `New-ItemProperty`、`schtasks /create`）；
-- 递归删除（`Remove-Item -Recurse`、`rm -rf`、`del /s` 等）；
+- 递归删除（`Remove-Item -Recurse`、`rm -rf`、`del /s` 等）——0.8.0 起先解析目标：临时目录根（`%TEMP%`、`$env:TEMP`、`/tmp/`、`/var/tmp/`）与「提供的工作目录为非 live 时的相对/子路径递归删除」（如 `rm -rf node_modules`）属于正常清理，不再拦截；live 路径、系统目录、盘根，以及无法确定目标的命令仍然拦截；
 - 写系统目录（默认受保护片段含 `Program Files`、`ProgramData`、`C:/Windows`）。
 
 命中后，草稿不得作为完成结果放行，必须补齐三件产物；缺任何一件都会在**调用审核模型之前**确定性打回为 `verify`——这不是审核服务故障，也不会触发「未经审核」横幅。打回会逐条点名缺什么，以 `doubt_review` 回执交给作者：
@@ -386,7 +386,7 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
 | 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.7.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.7.0` |
+| 2 | 版本 0.8.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.8.0` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |
