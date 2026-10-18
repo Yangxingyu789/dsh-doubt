@@ -98,7 +98,13 @@ Since 0.7.0 the pre-execution guard denies live installation or writes into `.ds
 1. Quit every `DeepSeek Harness` process.
 2. Double-click `dsh-doubt-upgrade.cmd` (repository copy: `scripts\dsh-doubt-upgrade.cmd`; it calls `scripts/run-upgrade.ps1`).
 3. The launcher builds with `tsc`, backs up the current install to `_diag\offline-upgrade-backup-<timestamp>`, copies the new `lib/`, runs `pnpm install --offline` in the profile, compares every `lib` file by SHA-256, and starts DSH.
-4. Re-run the health check: `npm run doctor`.
+4. Re-run the health check: `npm run doctor` (expect every check PASS: `installed-version`, `lib-identical` 48 files / 0 differing, `preflight-module`).
+
+Expected live behaviour after the upgrade (verified by the assistant once you reply "已启动"):
+- recursive delete of a literal temp directory is **allowed** (0.8.0 rule);
+- writing into `.dsh/plugins/**` is **denied** by the pre-execute guard;
+- copying a live file out to temp is **allowed** (0.8.1 write-direction rule);
+- installing while DSH runs stays denied by design.
 
 Read-only self-check without quitting DSH:
 

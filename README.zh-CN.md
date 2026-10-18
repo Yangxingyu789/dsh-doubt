@@ -99,7 +99,13 @@ pnpm install --offline
 1. 任务管理器结束所有 `DeepSeek Harness` 进程；
 2. 双击 `dsh-doubt-upgrade.cmd`（仓库内副本：`scripts\dsh-doubt-upgrade.cmd`，它调用 `scripts\run-upgrade.ps1`）；
 3. 启动器会：`tsc` 构建 → 把当前安装备份到 `_diag\offline-upgrade-backup-<时间>` → 复制新的 `lib/` → 在 profile 里 `pnpm install --offline` → 逐文件 SHA-256 校验 → 启动 DSH；
-4. 升级后重跑健康检查：`npm run doctor`。
+4. 升级后重跑健康检查：`npm run doctor`（预期全部 PASS：`installed-version`、`lib-identical` 48 文件/0 差异、`preflight-module`）。
+
+升级后的预期运行期行为（由 Lead 在你回复「已启动」后实测）：
+- 字面 temp 目录递归删除**放行**（0.8.0 规则）；
+- 写入 `.dsh/plugins/**` 被前置闸门**拒绝**；
+- live 文件复制到 temp **放行**（0.8.1 写入方向规则）；
+- 宿主运行时安装仍按设计被拒绝。
 
 不退出 DSH 的只读自检：
 
