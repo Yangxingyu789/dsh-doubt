@@ -44,9 +44,19 @@ if (-not (Test-Path (Join-Path $Repo 'package.json'))) { Write-Host "FAIL: 仓�
 $repoPkg = Get-Content (Join-Path $Repo 'package.json') -Raw | ConvertFrom-Json
 Write-Host "target version: $($repoPkg.version)"
 
+# 1b) 解析要用的可执行文件：watcher 可能由 WMI/服务上下文启动，PATH 不一定与交互会话一致。
+$nodeExe = (Get-Command node.exe -ErrorAction SilentlyContinue).Source
+if (-not $nodeExe) { foreach ($c in @("$env:ProgramFiles\nodejs\node.exe", 'C:\Program Files\nodejs\node.exe')) { if (Test-Path $c) { $nodeExe = $c; break } } }
+if (-not $nodeExe) { Write-Host 'FAIL: 找不到 node.exe' -ForegroundColor Red; exit 1 }
+$pnpmExe = (Get-Command pnpm.cmd -ErrorAction SilentlyContinue).Source
+if (-not $pnpmExe) { foreach ($c in @("$env:APPDATA\npm\pnpm.cmd", "$env:USERPROFILE\AppData\Roaming\npm\pnpm.cmd")) { if (Test-Path $c) { $pnpmExe = $c; break } } }
+if (-not $pnpmExe) { Write-Host 'FAIL: 找不到 pnpm.cmd（无法离线安装 profile 依赖）' -ForegroundColor Red; exit 1 }
+$gitExe = (Get-Command git.exe -ErrorAction SilentlyContinue).Source
+Write-Host "tools: node=$nodeExe pnpm=$pnpmExe git=$gitExe"
+
 # 2) 构建（脚本自己编译，避免装到旧产物）
 Write-Host '-- build (tsc) --'
-& node (Join-Path $Repo 'node_modules\typescript\bin\tsc') -p (Join-Path $Repo 'tsconfig.json')
+& $nodeExe (Join-Path $Repo 'node_modules\typescript\bin\tsc') -p (Join-Path $Repo 'tsconfig.json')
 if ($LASTEXITCODE -ne 0) { Write-Host 'FAIL: 构建失败' -ForegroundColor Red; exit 1 }
 
 # 3) 备份当前安装 + profile 文件
@@ -60,9 +70,10 @@ foreach ($f in @('package.json','pnpm-lock.yaml','cordis.patch.yml')) {
   if (Test-Path $src) { Copy-Item $src (Join-Path $backup "profile-files\$f") -Force }
 }
 $current = if (Test-Path (Join-Path $pluginDir 'package.json')) { (Get-Content (Join-Path $pluginDir 'package.json') -Raw | ConvertFrom-Json).version } else { 'not-installed' }
+$repoHead = if ($gitExe) { try { (& $gitExe -C $Repo rev-parse HEAD) } catch { 'unknown' } } else { 'unknown' }
 @(
   "backup_time=$stamp"
-  "repo_head=$(git -C $Repo rev-parse HEAD)"
+  "repo_head=$repoHead"
   "old_version=$current"
   "new_version=$($repoPkg.version)"
 ) | Set-Content (Join-Path $backup 'manifest.txt') -Encoding utf8
@@ -80,7 +91,7 @@ foreach ($item in @('lib','cordis.patch.yml','dsh-plugin.json','package.json','R
 }
 Write-Host '-- pnpm install --offline --'
 Push-Location $profileDir
-try { & pnpm.cmd install --offline } finally { Pop-Location }
+try { & $pnpmExe install --offline } finally { Pop-Location }
 if ($LASTEXITCODE -ne 0) { Write-Host 'FAIL: pnpm install --offline 失败（pnpm store 可能不完整）' -ForegroundColor Red; exit 1 }
 
 # 5) 校验：版本 + 逐文件 hash
