@@ -92,6 +92,29 @@ pnpm install --offline
 
 ---
 
+## 离线升级
+
+0.7.0 起，执行前闸门会在宿主运行时拒绝 live 安装或写入 `.dsh/profiles/**`、`.dsh/plugins/**`（见「执行前闸门」）。因此升级必须在 DSH 完全退出后执行：
+
+1. 任务管理器结束所有 `DeepSeek Harness` 进程；
+2. 双击 `dsh-doubt-upgrade.cmd`（仓库内副本：`scripts\dsh-doubt-upgrade.cmd`，它调用 `scripts\run-upgrade.ps1`）；
+3. 启动器会：`tsc` 构建 → 把当前安装备份到 `_diag\offline-upgrade-backup-<时间>` → 复制新的 `lib/` → 在 profile 里 `pnpm install --offline` → 逐文件 SHA-256 校验 → 启动 DSH；
+4. 升级后重跑健康检查：`npm run doctor`。
+
+不退出 DSH 的只读自检：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 -DryRun
+```
+
+只打印目标版本与已解析的工具路径，不写任何文件。
+
+回滚：把 `_diag\offline-upgrade-backup-<时间>\plugins-dsh-doubt\*` 恢复回 `%USERPROFILE%\.dsh\plugins\dsh-doubt\`，把 `profile-files\package.json` 与 `pnpm-lock.yaml` 恢复回 profile 目录，在该目录执行 `pnpm install --offline`，然后重启 DSH。升级脚本每次运行都会打印这些命令。
+
+诚实边界：`lib` 每个文件都做 SHA-256 对比，但「运行中的宿主实际加载了哪个版本」只能从进程启动时间与观察到的行为**推断**——宿主没有加载日志。不要在宿主运行时热安装，闸门会按设计拒绝。
+
+---
+
 ## 配置
 
 在 profile 的 `cordis.patch.yml` 里加同 id 条目覆盖（后加载优先）：

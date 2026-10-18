@@ -91,6 +91,29 @@ cd "$DSH_HOME/profiles/desktop" && pnpm install --offline
 
 ---
 
+## Upgrading (offline)
+
+Since 0.7.0 the pre-execution guard denies live installation or writes into `.dsh/profiles/**` / `.dsh/plugins/**` while the host is running (see "Pre-execution guard"). Upgrades therefore run with DSH fully closed:
+
+1. Quit every `DeepSeek Harness` process.
+2. Double-click `dsh-doubt-upgrade.cmd` (repository copy: `scripts\dsh-doubt-upgrade.cmd`; it calls `scripts/run-upgrade.ps1`).
+3. The launcher builds with `tsc`, backs up the current install to `_diag\offline-upgrade-backup-<timestamp>`, copies the new `lib/`, runs `pnpm install --offline` in the profile, compares every `lib` file by SHA-256, and starts DSH.
+4. Re-run the health check: `npm run doctor`.
+
+Read-only self-check without quitting DSH:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 -DryRun
+```
+
+It prints the target version and resolved tool paths and writes nothing.
+
+Rollback: restore `_diag\offline-upgrade-backup-<timestamp>\plugins-dsh-doubt\*` into `%USERPROFILE%\.dsh\plugins\dsh-doubt\`, restore `profile-files\package.json` and `pnpm-lock.yaml` into the profile directory, run `pnpm install --offline` there, and restart DSH. The upgrader prints these commands after every run.
+
+Honest limits: every `lib` file is compared by SHA-256, but the version the running host actually loaded is **inferred** from the process start time and observed behaviour — the host has no load log. Do not hot-install into a running host; the guard denies it by design.
+
+---
+
 ## Configuration
 
 Override in your profile's `cordis.patch.yml` (later layers win):
