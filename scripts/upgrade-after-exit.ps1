@@ -34,7 +34,11 @@ while ((Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue).Coun
 Log 'host exited; running offline upgrade'
 
 try {
-  $out = & pwsh -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'upgrade-offline.ps1') -Profile $Profile -Repo $Repo 2>&1
+  # 用系统 PowerShell 调子脚本（本机没有独立的 pwsh 7；dsh-ops 自带的 pwsh 随 DSH 目录，
+  # 升级期间不可依赖）。Windows PowerShell 5.1 能跑这两个脚本用到的 cmdlet。
+  $windowsPowerShell = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+  if (-not (Test-Path $windowsPowerShell)) { $windowsPowerShell = 'powershell.exe' }
+  $out = & $windowsPowerShell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $PSScriptRoot 'upgrade-offline.ps1') -Profile $Profile -Repo $Repo 2>&1
   $out | ForEach-Object { Log "  $_" }
   if ($LASTEXITCODE -ne 0) {
     Log "FAIL: upgrade-offline exited $LASTEXITCODE; DSH not restarted. Rollback commands are in the log above / backup folder."
