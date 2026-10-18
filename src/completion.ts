@@ -44,6 +44,7 @@ For observation/postcondition, evidence is a nonempty array of {"callId":"actual
 For postcondition: actionIds contains ONLY the mutating action calls, never read/test/check calls. evidence contains ONLY independent checks started AFTER those actions finished, never the write receipt itself. Example: write id edit returns saved at resultIndex 1, read id check returns {"port":8080} at callIndex 2: actionIds=["edit"], evidence=[{"callId":"check","quote":"8080"}]. Split a completion claim and a raw observation into separate segments if needed. Report gaps in the language of the draft; phrase untested alternative explanations as possibilities, not established diagnoses.
 Keep the JSON minimal: as few segments as possible (one segment may cover a long contiguous partId range), never restate draft text, and do not narrate your analysis.
 Live-environment mutations need a stricter contract: writing .dsh/profiles/** or .dsh/plugins/**, installing into a running profile (pnpm/npm install), killing processes or stopping services, shutdown, registry/service/autostart changes, recursive deletes, or writes under system directories. When the trace shows such a mutation, the draft must disclose a backup location and a directly executable rollback command, and must include an independent health check started AFTER the mutation finished (a write/install receipt is not a health check). The mutation must be authorized by the user before it happened — either an approval event or an explicit user instruction in the requests; a hot-fix the model decided on its own is NOT completion evidence. If any of these is missing, return {"decision":"verify"} and name exactly which item is missing.
+Review scope: complete=false, omittedCalls>0 or truncatedCalls>0 means those records were NOT included in your packet. That is a limitation of this review, not an author omission — never return verify merely because records were omitted, or because a claim refers to earlier-turn work whose records are not present; the contract above makes that unavailable, not verify. Never require the author to paste or re-run historical commands. Judge every claim that the included records can support. If the draft explicitly labels a point as unverified/uncertain, approve that part as unverified instead of demanding proof. Explanatory, background and narrative text that summarises included records does not need a separate quote for every sentence; grounding is required for factual and operational assertions. Return at most 3 concrete gaps, each one fixable using only the records included in the packet.
 Return only JSON. Approval is an evidence-based review, not a guarantee of truth. When uncertain, choose verify.`
 
 const squash = (s: string): string => s.replace(/\s+/g, '')
@@ -96,6 +97,21 @@ function clipRecord(record: ToolTrace, keep: number): ToolTrace {
   return { ...record, resultText: text.slice(0, kept) + truncationNote(kept, text.length), truncated: text.length - kept }
 }
 
+/** Identifiers, paths, hashes and numbers the draft refers to. */
+function draftKeywords(draft: string): string[] {
+  const matches = draft.toLowerCase().match(/[a-z0-9_\-./:\\]{6,}/g) ?? []
+  return [...new Set(matches)].slice(0, 160)
+}
+
+/** How many of the draft's identifiers appear in this record (bounded work per record). */
+function keywordScore(record: ToolTrace, keywords: readonly string[]): number {
+  if (!keywords.length) return 0
+  const haystack = `${JSON.stringify(record.args)}\n${record.resultText}`.toLowerCase().slice(0, 6_000)
+  let score = 0
+  for (const keyword of keywords) if (haystack.includes(keyword)) score++
+  return score
+}
+
 export function buildReviewPacket(events: readonly any[], turn: number, messages: readonly Message[], draft: string, maxChars: number): ReviewPacket {
   const human = (m: Message) => m?.role === 'user' && (!m.source?.kind || ['user', 'user-approval'].includes(m.source.kind))
   const durableRequests = events.filter((e) => e?.type === 'user/message' && human(e.data)).map((e) => collectText(e.data))
@@ -146,8 +162,22 @@ export function buildReviewPacket(events: readonly any[], turn: number, messages
   // History is optional context and must not pad the request to the limit: an
   // always-maximal packet made every review call slow enough to time out (the
   // measured payloads were ~119.7k chars on ordinary turns). Cap its share.
-  let historyLeft = Math.min(left, Math.max(8_000, Math.floor(maxChars / 4)))
+  // Selection is relevance-aware: long sessions omit hundreds of historical calls,
+  // so showing only the newest ones makes the reviewer ask for evidence the draft
+  // already cites (commit ids, paths, hashes) but which never entered the packet.
+  let historyLeft = Math.min(left, Math.max(12_000, Math.floor(maxChars / 3)))
+  const keywords = draftKeywords(draft)
+  const ranked = history
+    .map((record) => ({ record, score: keywordScore(record, keywords) }))
+    .sort((a, b) => b.score - a.score || b.record.callIndex - a.record.callIndex)
+  const historyUsed = new Set<number>()
+  for (const { record, score } of ranked) {
+    if (score <= 0) break
+    const cost = costOf(record)
+    if (cost <= historyLeft) { selected.push(record); historyUsed.add(record.callIndex); historyLeft -= cost; left -= cost }
+  }
   for (let i = history.length - 1; i >= 0; i--) {
+    if (historyUsed.has(history[i].callIndex)) continue
     const cost = costOf(history[i])
     if (cost <= historyLeft) { selected.push(history[i]); historyLeft -= cost; left -= cost }
   }

@@ -1,5 +1,17 @@
 # 更新日志
 
+## 0.6.2（修「补查预算用尽」横幅：长回答的审核范围与回执预算）
+
+- **现象**：0.6.1 装上后，长回答不再出现 `max-tokens`，但改为出现「以上草稿**未经完整审核**（自动补查预算已用尽）」横幅（用户 2026-10-18 12:04 截图反馈）。
+- **取证（读本机落盘 session，不是推断）**：解压 `~/.dsh/sessions/.../session.v4.jsonl.zstd` 取 turn 9 事实：草稿 **5,051 字符**；审核包 **79,671 字符**（上限 80,000）、evidence=41 条；`evidenceContext = {currentCalls:38, historicalCalls:263, omittedCalls:260, truncatedCalls:10, complete:false}`；该轮依次收到 **2 次 `verify` 回执**（6 条 + 4 条意见），`operationMaxRounds=2` 用尽后按设计放行并附横幅。第三次修订稿已经补上被要的证据，但预算已尽、**没有被审核**。
+- **修复**：
+  - ① `operationMaxRounds` 默认与自带 patch 由 **2 → 3**：多断言长回答至少留一轮修复空间（profile 覆盖里也需同步，安装时一并改）。
+  - ② `REVIEW_INSTRUCTION` 新增 **review-scope 契约**：`complete=false/omittedCalls>0/truncatedCalls>0` 表示这些记录**没有进入审核包**，属于本次审核的限制、不是作者的缺口，不得据此返回 `verify`（按契约应返回 `unavailable`）；不得要求作者重跑历史命令；草稿已明确标注「未验证」的点按 `unverified` 通过；解释性/背景文字不需要逐句引文；意见最多 3 条且必须能用包内记录修复。
+  - ③ 历史记录选择改为 **relevance-aware**：按草稿里出现的路径 / 提交 id / 哈希 / 数字等标识给历史记录打分，优先纳入被引用记录，再按新到旧填满预算——避免「草稿引用了某条工具记录，但审核包只装了最新的几条历史」。
+- **测试**：`test/operations.test.mjs` 新增 3 组断言：review-scope 文案存在；relevance 选择让被引用的历史记录进入审核包（12 条更新的噪声记录竞争预算）；`operationMaxRounds` 默认 3。
+- **实测**：把 turn 9 的 5,051 字符草稿在新逻辑下重算审核包，草稿引用的标识 `712408f` / `55ac312` / `612be03` / `install-backup-20261018-014908` / `guardPromptInjected` / `1F023565` / `answersWithReviewBanner` **全部出现在包内**；`npm test` / `smoke` / `audit` / `host.test` 全绿（0.6.2）。
+- **诚实边界**：这是针对「回执预算用尽」路径的修复；**尚未在真实长回答上重新观察**（需要安装 0.6.2 + 重启后再写一条长回答）。若装后仍出现横幅，下一步是把 `reviewMaxChars` 提到 120k 或把 `reviewReasoningEffort` 设为 `low`。
+
 ## 0.6.1（修「未经完整审核（max-tokens）」：审核器思考预算）
 
 - **现象**：最终回答反复带「以上草稿**未经完整审核**：审核服务未完成（max-tokens）」横幅。0.6.0 装到 live profile 后重启的首个长回答实测复现。

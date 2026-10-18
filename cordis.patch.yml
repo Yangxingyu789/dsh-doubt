@@ -34,7 +34,9 @@
         requireProvenance: true
         # 最终文本显示前独立审核；不受措辞、短回答与风险分门槛影响
         requireOperationEvidence: true
-        operationMaxRounds: 2
+        # 长回答的回执补查预算：2 太容易在一次多断言回答里被耗尽（实测 turn 9 连续两次
+        # verify 后只剩「补查预算用尽」横幅）。3 给多断言回答留一轮修复空间。
+        operationMaxRounds: 3
         # 审核输入是中文正文+工具证据，字符量级≈token 量级：
         # 120k 字符实测会让审核调用超过 60s（REVIEW_TIMEOUT → 回答被扣留）。
         reviewTimeoutMs: 120000

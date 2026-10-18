@@ -108,7 +108,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   strictLabeling: true,
   requireProvenance: true,
   requireOperationEvidence: true,
-  operationMaxRounds: 2,
+  operationMaxRounds: 3,
   reviewTimeoutMs: 120_000,
   reviewMaxChars: 48_000,
   segmentedReview: true,

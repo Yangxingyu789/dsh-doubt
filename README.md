@@ -112,7 +112,7 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `strictLabeling` | `true` | Unverifiable assertions must be labelled in the final answer |
 | `requireProvenance` | `true` | When a delivered document (`.md`/`.txt`) is written with no provenance section, ask for a step-by-step provenance table (see "Provenance gate"). Once per document; own budget of 4 per human turn, independent of `maxRounds` |
 | `requireOperationEvidence` | `true` | Independently review full final text and evidence before display, without keyword/length thresholds |
-| `operationMaxRounds` | `2` | Recovery budget per host turn (0–5); 0 reviews but does not retry |
+| `operationMaxRounds` | `3` | Recovery budget per host turn (0–5); 0 reviews but does not retry. Raised from 2 after a measured long answer needed a third draft before the reviewer could approve |
 | `reviewTimeoutMs` | `120000` | Per-attempt review deadline (two attempts max); a timeout never releases the unreviewed draft, but it now retries once without optional history |
 | `reviewMaxChars` | `48000` | Review request bound in chars (≈ tokens for Chinese). History fills at most a quarter of it, so requests no longer pad to the limit and time out |
 | `segmentedReview` | `true` | Review long drafts part by part when the full packet does not fit (see "Operation evidence gate"); `false` restores the single-packet path |
@@ -399,7 +399,7 @@ than quietly dropped.
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
 | 1 | 11 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 11 `node test/*.test.mjs`; rerun with `npm run verify` |
-| 2 | Version 0.6.1, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.6.1` |
+| 2 | Version 0.6.2, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.6.2` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |

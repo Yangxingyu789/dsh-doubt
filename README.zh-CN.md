@@ -113,7 +113,7 @@ pnpm install --offline
 | `strictLabeling` | `true` | 无法核验的断言必须在最终回答里标「未验证」 |
 | `requireProvenance` | `true` | 写出交付文档（`.md`/`.txt`）但正文没有出处小节时，要求补一份逐步骤溯源表（见「溯源闸」）。同一份文档只问一次；独立预算，一次人工回合最多 4 次，不受 `maxRounds` 影响 |
 | `requireOperationEvidence` | `true` | 显示前独立审核全文与工具证据，不依赖关键词或字数 |
-| `operationMaxRounds` | `2` | 每个宿主 turn 退回补查上限（0–5）；0 仍审核但不重试 |
+| `operationMaxRounds` | `3` | 每个宿主 turn 退回补查上限（0–5）；0 仍审核但不重试。实测一条长回答需要第三稿才可能通过审核，故由 2 提到 3 |
 | `reviewTimeoutMs` | `120000` | 单次审核超时（最多两次尝试）；超时不放行原稿，但会去掉历史记录重试一次 |
 | `reviewMaxChars` | `48000` | 审核请求字符上限（中文按字≈token）。历史记录最多只占 1/4，避免请求顶满上限而超时 |
 | `segmentedReview` | `true` | 整包装不下时按段审核长草稿（见「操作取证闸」）；`false` 回退单包路径 |
@@ -370,7 +370,7 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
 | 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.6.1，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.1` |
+| 2 | 版本 0.6.2，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.2` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |

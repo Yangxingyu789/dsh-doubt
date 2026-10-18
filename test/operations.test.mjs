@@ -315,4 +315,50 @@ hHistory.request.messages = [{ role: 'user', source: { kind: 'user' }, content: 
 assert.equal(visible(await collect(await hHistory.run(historyPacket.draft, 2))), historyPacket.draft)
 assert.equal(hHistory.guard.reviewedTurn(hHistory.agent, 2), true)
 hHistory.installed.dispose()
+
+// Review-scope contract: omitted/truncated records are a limit of THIS packet, not an
+// author gap. Without this clause a long answer loops: the reviewer asks the author to
+// reproduce evidence that exists in history but never entered the packet, the receipt
+// budget runs out, and the answer is released with «自动补查预算已用尽».
+{
+  let systemText = ''
+  await reviewPacket(packet, {}, { stream: (r) => {
+    systemText = r.messages[0].content[0].text
+    return iterable(textChunks(JSON.stringify({ decision: 'verify', issues: ['x'] })))
+  } }, normalizeConfig({}))
+  assert.ok(systemText.includes('Review scope:'), 'review instruction must define the review-scope contract')
+  assert.ok(systemText.includes('never return verify merely because records were omitted'), 'omitted records are not author gaps')
+  assert.ok(systemText.includes('at most 3 concrete gaps'), 'issue list must stay bounded')
+}
+
+// Relevance-aware history: a long session omits most historical calls. The record the
+// draft actually cites (commit id / path / hash) must survive the budget, otherwise the
+// reviewer keeps asking for evidence the draft already names.
+{
+  const cited = 'REFERENCE_7f3a91c2'
+  const history = []
+  for (let i = 0; i < 12; i++) {
+    const id = `noise-${i}`
+    history.push({ type: 'tool/call', data: { turn: 1, callId: id, name: 'pwsh', arguments: JSON.stringify({ command: `node noise-${i}.mjs` }) } })
+    history.push({ type: 'tool/result', surfaceOp: 'append', data: { turn: 1, message: { toolCallId: id, source: { callId: id }, content: [{ type: 'text', text: `noise output ${i} ` + 'x'.repeat(2400) }] } } })
+  }
+  history.unshift(
+    { type: 'tool/call', data: { turn: 1, callId: 'cited', name: 'pwsh', arguments: JSON.stringify({ command: `git show ${cited}` }) } },
+    { type: 'tool/result', surfaceOp: 'append', data: { turn: 1, message: { toolCallId: 'cited', source: { callId: 'cited' }, content: [{ type: 'text', text: `commit ${cited} adds the cited change` }] } } },
+  )
+  const current = [
+    { type: 'tool/call', data: { turn: 2, callId: 'now', name: 'read', arguments: '{"path":"E:\\\\x"}' } },
+    { type: 'tool/result', surfaceOp: 'append', data: { turn: 2, message: { toolCallId: 'now', source: { callId: 'now' }, content: [{ type: 'text', text: 'current observation' }] } } },
+  ]
+  const relevantPacket = buildReviewPacket([...history, ...current], 2, [], `结论引用 ${cited} 与 \`E:\\\\x\`。`, 20000)
+  assert.ok(relevantPacket.evidence.some((e) => e.id === 'cited'), 'cited historical record must be included despite newer noise')
+  assert.equal(relevantPacket.evidence.find((e) => e.id === 'cited').turn, 1)
+  assert.ok(relevantPacket.evidenceContext.omittedCalls > 0, 'fixture must actually omit history')
+}
+
+// Long-answer receipt budget: two rounds were exhausted by a single multi-claim answer
+// (turn 9 of the live session); the default now leaves one more repair round.
+assert.equal(normalizeConfig({}).operationMaxRounds, 3)
+assert.equal(normalizeConfig({ operationMaxRounds: 2 }).operationMaxRounds, 2)
+
 console.log('operations.test OK: whole-answer review, withholding, grounding, chronology, retry/timeout/cancellation (controlled reviewer)')
