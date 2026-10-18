@@ -1,6 +1,6 @@
 {
   "name": "dsh-doubt",
-  "version": "0.8.3",
+  "version": "0.8.4",
   "description": "最终正文显示前审核实际工具证据；缺少验收时自动退回补查，无法验证时明确报告未完成。保留分层断言检查与文档溯源。",
   "type": "module",
   "main": "lib/index.js",

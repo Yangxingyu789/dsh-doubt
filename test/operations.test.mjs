@@ -85,22 +85,30 @@ for (const review of [() => { throw Error('synchronous adapter failure') }, () =
   assert.equal(h.guard.failedTurn(h.agent, 1), true)
   assert.ok(Date.now() - start < 1500); h.installed.dispose()
 }
-// reviewNotice: 'short'（默认）= 一行提示；'off' = 回答末尾完全不出现插件提示。
+// reviewNotice: 默认 'off' = 回答末尾不出现插件提示；显式 'short' = 一行提示。
 {
-  const shortRun = harness({ config: { operationMaxRounds: 1 }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
+  const shortRun = harness({ config: { operationMaxRounds: 1, reviewNotice: 'short' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
   await collect(await shortRun.run()) // 第一次触发 doubt_review 回执
   const out = visible(await collect(await shortRun.run()))
   assert.ok(out.includes(packet.draft), 'short 模式仍放行原稿')
   assert.match(out, /本次审核未完成，已按原稿放行/)
   assert.ok(!out.includes('自动补查预算已用尽'), 'short 模式不附意见明细')
   shortRun.installed.dispose()
+  // 模型把上一轮的提示行抄进新草稿时，插件不得再追加一遍（否则用户看到两行）。
+  const echoedDraft = `${packet.draft}\n\n——\n[dsh-doubt] 本次审核未完成，已按原稿放行。`
+  const echoed = harness({ draft: echoedDraft, config: { operationMaxRounds: 1, reviewNotice: 'short' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
+  await collect(await echoed.run())
+  const echoedOut = visible(await collect(await echoed.run()))
+  assert.equal(echoedOut.split('本次审核未完成').length - 1, 1, '插件不得在草稿已含提示时再追加一条')
+  assert.ok(echoedOut.includes(packet.draft), '去重后仍放行原稿')
+  echoed.installed.dispose()
   const offRun = harness({ config: { operationMaxRounds: 1, reviewNotice: 'off' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
   await collect(await offRun.run())
   const out2 = visible(await collect(await offRun.run()))
   assert.ok(out2.includes(packet.draft), 'off 模式仍放行原稿')
   assert.ok(!out2.includes('dsh-doubt'), 'off 模式末尾不出现插件提示')
   offRun.installed.dispose()
-  assert.equal(normalizeConfig({}).reviewNotice, 'short', '默认 reviewNotice=short')
+  assert.equal(normalizeConfig({}).reviewNotice, 'off', '默认 reviewNotice=off（不在回答末尾追加提示）')
   assert.equal(normalizeConfig({}).guardPreExecute, true, '默认 guardPreExecute=true')
 }
 assert.equal((await reviewPacket({ ...packet, draft: 'x'.repeat(2000) }, {}, { stream: () => { throw Error('must not call') } }, normalizeConfig({ reviewMaxChars: 1000 }))).approved, false)

@@ -231,7 +231,8 @@ ${opts.guardLiveMutation === true ? `${GUARD_SECTION_ZH}\n\n` : ''}硬性禁令�
 - 编号、ID、哈希、URL、文件路径、API 名称一律不许凭记忆写；不确定就去查或明确标注「未核实」。
 - 不要用「一定」「绝对」「100%」，除非有上面的证据。
 - 被指出错误时写清「之前错了：X → 正确的是 Y」，不要静默改写。
-- 无法核验就标「未验证」，不要用「应该」「大概」「一般来说」掩盖没查过。`
+- 无法核验就标「未验证」，不要用「应该」「大概」「一般来说」掩盖没查过。
+- 不要在最终回答里自行写以 '——' 和 '[dsh-doubt]' 开头的审核提示行；该提示由插件统一追加，自行重复会导致用户看到两遍。`
     : `## Tiered verification (dsh-doubt)
 
 You have a \`verify_claims\` tool: it **actually executes** the checks you submit (command / file / HTTP / expression) and returns measured results. The plugin also verifies automatically after each turn and hands you the results.
@@ -249,5 +250,6 @@ ${opts.guardLiveMutation === true ? `${GUARD_SECTION_EN}\n\n` : ''}Hard rules:
 - Never write identifiers, IDs, hashes, URLs, file paths, or API names from memory; look them up or label them "not verified".
 - Do not use "definitely", "absolutely", "100%" without the evidence above.
 - When corrected, write "earlier I was wrong: X → correct is Y"; never silently rewrite.
-- If it cannot be verified, mark it "unverified"; do not cover an unchecked guess with "probably" or "generally".`
+- If it cannot be verified, mark it "unverified"; do not cover an unchecked guess with "probably" or "generally".
+- Never append a trailing review-notice line starting with '——' and '[dsh-doubt]' yourself; the plugin adds that once, and echoing it makes the user see it twice.`
 }

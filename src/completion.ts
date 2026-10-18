@@ -432,9 +432,15 @@ function* releasedDraft(chunks: readonly Chunk[], banner: string, usage?: Chunk)
   const indices = body.map((c) => c.index).filter((i): i is number => typeof i === 'number')
   const index = (indices.length ? Math.max(...indices) : -1) + 1
   yield* body
-  yield { type: 'block-start', index, blockType: 'text' }
-  yield { type: 'text-delta', index, text: banner }
-  yield { type: 'block-end', index, block: { type: 'text', text: banner } }
+  // The model sometimes echoes the previous turn's plugin notice into its new
+  // draft; appending our own banner would then show the same line twice.
+  const bodyText = body.filter((c) => c.type === 'text-delta' && typeof c.text === 'string').map((c) => c.text as string).join('')
+  const echoed = /\[dsh-doubt\][^\n]*审核未完成[^\n]*$/.test(bodyText.trimEnd())
+  if (!echoed) {
+    yield { type: 'block-start', index, blockType: 'text' }
+    yield { type: 'text-delta', index, text: banner }
+    yield { type: 'block-end', index, block: { type: 'text', text: banner } }
+  }
   if (usage) yield usage
   yield { type: 'finish', reason: { kind: 'stop' } }
 }

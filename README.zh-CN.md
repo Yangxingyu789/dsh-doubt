@@ -149,7 +149,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 
 | `reviewReasoningEffort` | `off` | 审核调用的 reasoning effort。宿主 DeepSeek adapter 在未指定时默认 `high` + thinking，而 thinking 与 `max_tokens` 共用预算；实测第 1 次尝试 12000 输出 token 全花在 thinking 上、可见正文 0 字符 → `max-tokens`。`off` 把预算留给 JSON 判定；`default` 回退宿主默认 |
 | `guardLiveMutation` | `true` | 审核前的确定性危险变更闸门（见「危险变更闸门」）；`false` 完全回退旧行为 |
 | `guardPreExecute` | `true` | 执行前闸门（宿主 `tools/pre-execute` waterfall）：危险 live 变更在工具执行前要求宿主权限审批（`ask`）；无审批通道或策略为 `never` 时拒绝执行（见「执行前闸门」）；`false` 退回仅事后披露 |
-| `reviewNotice` | `short` | 最终审核未完成时的末尾提示：`banner`=完整横幅+意见，`short`=一行，`off`=不显示（审核结果仍在插件内部记录） |
+| `reviewNotice` | `off` | 最终审核未完成时的末尾提示：`banner`=完整横幅+意见，`short`=一行，`off`=不显示（默认；审核结果仍在插件内部记录） |
 | `reviewMaterialOnly` | `true` | 草稿没有可核验断言时（版本/路径/命令/数字/标识/状态断言均无）跳过审核模型调用；`false` 强制每条回答都审核 |
 | `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | `guardLiveMutation` / `guardPreExecute` 的受保护路径片段（大小写、斜杠不敏感） |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
@@ -303,7 +303,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 
 
 诚实边界：该闸门只识别 `liveMutationPaths` 与命令规则覆盖的危险动作，**不能判断操作是否有证据支撑**——「无依据断言」仍由最终回答审核负责。已在真实 `ToolRuntime` 上验证（`test/host.test.mjs`：危险调用在执行前被拒绝、工具体未运行；普通 `node --version` 正常执行），并在 `test/guard.test.mjs` 覆盖 ask/deny/allow、`never` 与无审批通道分支。
 
-`reviewNotice`（默认 `short`）控制最终审核未完成时的末尾提示：`banner` 保留完整横幅与审核意见，`short` 追加一行，`off` 不追加任何提示。审核结果仍记录在插件内部，这个开关只改变用户看到的内容。
+`reviewNotice`（默认 `off`）控制最终审核未完成时的末尾提示：`banner` 保留完整横幅与审核意见，`short` 追加一行，`off` 不追加任何提示。审核结果仍记录在插件内部，这个开关只改变用户看到的内容。
 
 `reviewMaterialOnly`（默认 `true`）：草稿里没有任何可核验断言时（无版本号/路径/命令/数字/反引号代码标识/状态断言），直接确定性放行，不调用审核模型；设为 `false` 则每条回答都走模型审核。这是省 token 的开关，不是正确性保证：检测器是保守的正则列表，只要草稿提到具体断言就仍会审核。
 
@@ -316,8 +316,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\upgrade-offline.ps1 
 | 1 | 宿主在工具体执行前运行 `tools/pre-execute`，并消费 `{kind:'allow'\|'ask'\|'deny'}` | 宿主包 `%TEMP%\dsh-asar\dsh\node_modules\@deepseek-ai\dsh-tools\lib\types\index.js:885`（`ctx.waterfall(carrier,'tools/pre-execute',…)`）与 `:1102`（`serviceAsk`），行内容已读 | 有出处 |
 | 2 | `ask` 走 ApprovalService；无审批通道或策略 `never` → deny | 同一宿主文件 `:1102`；实机拒绝原文「approval 缺失或策略为 never … 已拒绝执行」 | 有出处 |
 | 3 | 默认值 `guardPreExecute: true`、`reviewNotice: 'short'` | `src/config.ts:64,67,124,125`；`normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | 有出处 |
-| 4 | 仓库版本 0.8.3（两个清单一致） | `package.json` / `dsh-plugin.json` 实测 → `0.8.3` / `0.8.3` | 有出处 |
-| 5 | live 安装版为 0.8.2（0.8.3 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.2`；`npm run doctor` 在下次离线升级前显示 `installed-version: repo=0.8.3 installed=0.8.2` | 有出处 |
+| 4 | 仓库版本 0.8.4（两个清单一致） | `package.json` / `dsh-plugin.json` 实测 → `0.8.4` / `0.8.4` | 有出处 |
+| 5 | live 安装版为 0.8.3（0.8.4 尚未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.3`；`npm run doctor` 在下次离线升级前显示 `installed-version: repo=0.8.4 installed=0.8.3` | 有出处 |
 | 6 | 0.8.0 递归删除判定（temp 放行；系统/live/盘根/未知保守拦截） | `src/guard.ts:166`（`dangerousDeleteTarget`）；`test/guard.test.mjs` 用例；`npm test` exit 0 | 有出处 |
 | 7 | 0.8.1 写入方向判定；规则 id `live-path-shell-mutation` | `src/guard.ts:198`（`writeDestination`）、`:241`、`:246`；guard 测试；实机 copy-out `copy-out-executed=True`、`copied-version=0.8.1` | 有出处 |
 | 8 | 0.8.2 `deleteTargets` 只取路径状 token；符号 `targets.some(...)` | `src/guard.ts:142`、`:231`、`:236`、`:237`；新增 guard 用例；`npm test` 11 文件 OK | 有出处 |

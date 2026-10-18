@@ -148,7 +148,7 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `reviewReasoningEffort` | `off` | Reasoning effort for the reviewer call. The host DeepSeek adapter defaults to `high` + thinking when omitted, and thinking shares `max_tokens`; measured attempt 1 spent all 12000 output tokens on thinking with 0 visible text → `max-tokens`. `off` keeps the budget for the JSON verdict; `default` restores the old host default |
 | `guardLiveMutation` | `true` | Deterministic live-mutation gate before review (see "Live-mutation gate"); `false` restores the previous behaviour exactly |
 | `guardPreExecute` | `true` | Pre-execution gate on the host's `tools/pre-execute` waterfall: dangerous live mutations require host approval before the tool runs (`ask`), and are denied when no approval channel exists or the policy is `never` (see "Pre-execution guard"); `false` restores post-hoc disclosure only |
-| `reviewNotice` | `short` | Tail notice when final-answer review did not complete: `banner` = full notice + issues, `short` = one line, `off` = no notice (review result is still logged internally) |
+| `reviewNotice` | `off` | Tail notice when final-answer review did not complete: `banner` = full notice + issues, `short` = one line, `off` = no notice (default; review result is still logged internally) |
 | `reviewMaterialOnly` | `true` | Skip the reviewer LLM call when the draft has no actionable claims (no version/path/command/number/identifier/state assertion); `false` forces review on every answer |
 | `liveMutationPaths` | `.dsh/profiles`, `.dsh/plugins`, `program files`, `programdata`, `c:/windows` | Protected path fragments for `guardLiveMutation` / `guardPreExecute` (case- and slash-insensitive) |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
@@ -279,7 +279,7 @@ With all three present the normal review still runs, and the reviewer also check
 
 Honest limits: the gate only recognizes the patterns in `liveMutationPaths` + the command rules; it cannot judge whether an operation is *backed by evidence*, only whether it is a live-host mutation. The final-answer review remains the layer for unsupported claims. Verified in `test/host.test.mjs` against the real `ToolRuntime` (dangerous call denied before its body runs; ordinary `node --version` allowed) and in `test/guard.test.mjs` for ask/deny/allow and the `never`/no-seam paths.
 
-`reviewNotice` (default `short`) controls the trailing text when final-answer review does not complete: `banner` keeps the full notice with the reviewer's issues, `short` appends one line, `off` appends nothing. The review result is still logged internally; the setting only changes what the user sees.
+`reviewNotice` (default `off`) controls the trailing text when final-answer review does not complete: `banner` keeps the full notice with the reviewer's issues, `short` appends one line, `off` appends nothing. The review result is still logged internally; the setting only changes what the user sees.
 
 `reviewMaterialOnly` (default `true`) skips the reviewer LLM call entirely when the draft contains no actionable claim at all (no version/path/command/number/backticked identifier/state assertion); such drafts are released deterministically. Set it to `false` to force model review on every answer. This is a token-cost control, not a correctness guarantee: the detector is a deliberately conservative regex list, and any draft mentioning a concrete claim still goes to the reviewer.
 
@@ -292,8 +292,8 @@ This table records the evidence for every claim introduced by the 0.7.0–0.8.3 
 | 1 | The host runs `tools/pre-execute` before the tool body and consumes `{kind:'allow'\|'ask'\|'deny'}` | Host bundle `%TEMP%\dsh-asar\dsh\node_modules\@deepseek-ai\dsh-tools\lib\types\index.js:885` (`ctx.waterfall(carrier,'tools/pre-execute',…)`) and `:1102` (`serviceAsk`); line content read | sourced |
 | 2 | `ask` is routed through the ApprovalService; missing channel or policy `never` → deny | Same host file `:1102`; live denial text “approval 缺失或策略为 never … 已拒绝执行” | sourced |
 | 3 | Defaults: `guardPreExecute: true`, `reviewNotice: 'short'` | `src/config.ts:64,67,124,125`; `normalizeConfig({})` → `reviewNotice=short guardPreExecute=true` | sourced |
-| 4 | Repository version is 0.8.3 in both manifests | `package.json` / `dsh-plugin.json` read → `0.8.3` / `0.8.3` | sourced |
-| 5 | Live installation is 0.8.2 (0.8.3 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.2`; `npm run doctor` reports `installed-version: repo=0.8.3 installed=0.8.2` until the next offline upgrade | sourced |
+| 4 | Repository version is 0.8.4 in both manifests | `package.json` / `dsh-plugin.json` read → `0.8.4` / `0.8.4` | sourced |
+| 5 | Live installation is 0.8.3 (0.8.4 not installed yet) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `installed-live=0.8.3`; `npm run doctor` reports `installed-version: repo=0.8.4 installed=0.8.3` until the next offline upgrade | sourced |
 | 6 | 0.8.0 recursive-delete rule (temp roots allowed; system/live/drive-root/unknown conservative) | `src/guard.ts:166` (`dangerousDeleteTarget`); `test/guard.test.mjs` cases; `npm test` exit 0 | sourced |
 | 7 | 0.8.1 write-direction rule; rule id `live-path-shell-mutation` | `src/guard.ts:198` (`writeDestination`), `:241`, `:246`; guard tests; live copy-out `copy-out-executed=True`, `copied-version=0.8.1` | sourced |
 | 8 | 0.8.2 `deleteTargets` path-like-token filter; symbol `targets.some(...)` | `src/guard.ts:142`, `:231`, `:236`, `:237`; new guard tests; `npm test` 11 files OK | sourced |

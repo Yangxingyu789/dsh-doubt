@@ -126,7 +126,7 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   reviewReasoningEffort: 'off',
   guardLiveMutation: true,
   guardPreExecute: true,
-  reviewNotice: 'short',
+  reviewNotice: 'off',
   reviewMaterialOnly: true,
   liveMutationPaths: ['.dsh/profiles', '.dsh/plugins', 'program files', 'programdata', 'c:/windows'],
   workspace: process.cwd(),
