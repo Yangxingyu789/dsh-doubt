@@ -489,3 +489,17 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 ## 许可
 
 MIT
+## 逐步骤溯源表（0.8.3 文档修订）
+
+以下条目在写入前于 2026-10-19 机械核对。本节没有外部链接，因此不涉及 HTTP 状态码；本地断言均以文件读取、`Select-String` 检索或本仓库命令输出为依据。
+
+| # | 条目 | 断言 | 依据 | 类别 |
+|---|---|---|---|---|
+| 1 | 当前 live 安装版 | `0.8.2` | 本轮读取 `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.2` | 有出处 |
+| 2 | 仓库版本 | `0.8.3` | `C:\work\dsh-doubt\package.json` → `0.8.3`；`dsh-plugin.json` → `0.8.3`；`npm run audit` → `版本一致：0.8.3` | 有出处 |
+| 3 | 历史提及 `0.8.1` / `0.8.2` | 当时 live 确为这些版本 | CHANGELOG 0.8.1/0.8.2 条目与交接文档；当时宿主状态现在无法重新观测 | 无依据（历史记录，本轮未复核） |
+| 4 | `scanAnswer(draft)` | 符号存在 | `src/scanner.ts:240` → `export function scanAnswer(text: string, options: ScanOptions = {}): ScanResult {` | 有出处 |
+| 5 | `hasMaterialClaim(draft)` | 符号存在 | `src/completion.ts:26` → `export function hasMaterialClaim(text: string): boolean {` | 有出处 |
+| 6 | `hasMaterialClaims`（复数） | 不存在，文档只用单数 | 全仓库 `Select-String hasMaterialClaims` → 0 命中（本轮） | 有出处（否定核对） |
+| 7 | 0.8.3 测试链 | 11 套件、audit 13 项、host 加载 0.8.3、host-loop 四模式 | `npm test` exit 0 且 11 个 `.test OK`；`node scripts/audit.mjs` → 13 项且 `版本一致：0.8.3`；`test/host.test.mjs` → `Loaded 0.8.3`；`host-loop.test.mjs` 四模式 exit 0 | 有出处 |
+| 8 | 0.8.3 运行期行为 | 未验证 | 0.8.3 尚未装入 live profile（live 为 0.8.2） | 无依据（未验证） |

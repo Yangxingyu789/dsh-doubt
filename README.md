@@ -519,3 +519,17 @@ re-derive them and state the commit they were measured at.
 ## License
 
 MIT
+## Step-by-step provenance table (0.8.3 documentation revision)
+
+Checked on 2026-10-19 before being written. This section has no external URLs, so no HTTP status applies; every local claim is grounded in a file read, a `Select-String` search, or command output produced in this repository.
+
+| # | Item | Claim | Evidence | Class |
+|---|---|---|---|---|
+| 1 | Live installation | `0.8.2` | `[System.IO.File]::ReadAllText('C:\Users\Example\.dsh\plugins\dsh-doubt\package.json')` → `0.8.2` (read this turn) | sourced |
+| 2 | Repository version | `0.8.3` | `C:\work\dsh-doubt\package.json` → `0.8.3`; `dsh-plugin.json` → `0.8.3`; `npm run audit` → `版本一致：0.8.3` | sourced |
+| 3 | Historical mentions `0.8.1` / `0.8.2` was | those were the live versions at the time | CHANGELOG 0.8.1/0.8.2 entries and the handoff document; the historical host state cannot be re-observed now | unsourced (historical record, not re-verified) |
+| 4 | `scanAnswer(draft)` | symbol exists | `src/scanner.ts:240` → `export function scanAnswer(text: string, options: ScanOptions = {}): ScanResult {` | sourced |
+| 5 | `hasMaterialClaim(draft)` | symbol exists | `src/completion.ts:26` → `export function hasMaterialClaim(text: string): boolean {` | sourced |
+| 6 | `hasMaterialClaims` (plural) | does not exist; docs use the singular | repository-wide `Select-String` for `hasMaterialClaims` → 0 matches (this turn) | sourced (negative check) |
+| 7 | 0.8.3 test chain | 11 suites, audit 13 items, host loads 0.8.3, host-loop 4 modes | `npm test` exit 0 with 11 `.test OK` lines; `node scripts/audit.mjs` → 13 checks and `版本一致：0.8.3`; `test/host.test.mjs` → `Loaded 0.8.3`; four `host-loop.test.mjs` modes exit 0 | sourced |
+| 8 | 0.8.3 runtime behaviour | not verified | 0.8.3 is not installed in the live profile yet (live is 0.8.2) | unsourced (unverified) |
