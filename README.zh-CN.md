@@ -96,8 +96,8 @@ pnpm install --offline
 
 0.7.0 起，执行前闸门会在宿主运行时拒绝 live 安装或写入 `.dsh/profiles/**`、`.dsh/plugins/**`（见「执行前闸门」）。因此升级必须在 DSH 完全退出后执行：
 
-1. 任务管理器结束所有 `DeepSeek Harness` 进程；
-2. 双击 `dsh-doubt-upgrade.cmd`（仓库内副本：`scripts\dsh-doubt-upgrade.cmd`，它调用 `scripts\run-upgrade.ps1`）；
+1. 双击 `dsh-doubt-upgrade.cmd`（仓库内副本：`scripts\dsh-doubt-upgrade.cmd`，它调用 `scripts\run-upgrade.ps1`）；若 DSH 仍在运行，窗口会等待最多 15 分钟；
+2. 完全退出 `DeepSeek Harness`（托盘图标 → Exit，或任务管理器结束所有 "DeepSeek Harness" 进程）；启动器检测到宿主退出后自动继续；
 3. 启动器会：`tsc` 构建 → 把当前安装备份到 `_diag\offline-upgrade-backup-<时间>` → 复制新的 `lib/` → 在 profile 里 `pnpm install --offline` → 逐文件 SHA-256 校验 → 启动 DSH；
 4. 升级后重跑健康检查：`npm run doctor`（预期全部 PASS：`installed-version`、`lib-identical` 48 文件/0 差异、`preflight-module`）。
 

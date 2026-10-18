@@ -2,7 +2,8 @@
 param(
   [string]$Profile = 'desktop',
   [string]$Repo = 'C:\work\dsh-doubt',
-  [switch]$CheckOnly
+  [switch]$CheckOnly,
+  [int]$WaitMinutes = 15
 )
 $ErrorActionPreference = 'Continue'
 $log = Join-Path $Repo '_diag\upgrade-console.log'
@@ -24,9 +25,18 @@ $running = @(Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue)
 Say "deepseek-harness-running=$($running.Count)"
 if ($CheckOnly) { Say 'CHECK-ONLY: launcher works, no upgrade attempted'; exit 0 }
 if ($running.Count -gt 0) {
-  Say 'ERROR: DeepSeek Harness is still running.'
-  Say 'Fully quit it first (Task Manager: end every "DeepSeek Harness" process), then run again.'
-  exit 2
+  Say "DeepSeek Harness is still running (PID: $($running.Id -join ', '))."
+  Say "Please FULLY QUIT DeepSeek Harness now (tray icon -> Exit, or Task Manager: end every 'DeepSeek Harness' process)."
+  Say "This window waits up to $WaitMinutes minutes for it to exit, then upgrades and restarts DSH."
+  $deadline = (Get-Date).AddMinutes($WaitMinutes)
+  while (@(Get-Process -Name 'DeepSeek Harness' -ErrorAction SilentlyContinue).Count -gt 0) {
+    if ((Get-Date) -gt $deadline) {
+      Say 'ERROR: timed out waiting for DeepSeek Harness to exit; no changes made.'
+      exit 2
+    }
+    Start-Sleep -Seconds 2
+  }
+  Say 'DeepSeek Harness exited; proceeding with upgrade.'
 }
 Say 'running scripts\upgrade-offline.ps1 ...'
 $out = & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Repo 'scripts\upgrade-offline.ps1') -Profile $Profile -Repo $Repo 2>&1

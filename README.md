@@ -95,8 +95,8 @@ cd "$DSH_HOME/profiles/desktop" && pnpm install --offline
 
 Since 0.7.0 the pre-execution guard denies live installation or writes into `.dsh/profiles/**` / `.dsh/plugins/**` while the host is running (see "Pre-execution guard"). Upgrades therefore run with DSH fully closed:
 
-1. Quit every `DeepSeek Harness` process.
-2. Double-click `dsh-doubt-upgrade.cmd` (repository copy: `scripts\dsh-doubt-upgrade.cmd`; it calls `scripts/run-upgrade.ps1`).
+1. Double-click `dsh-doubt-upgrade.cmd` (repository copy: `scripts\dsh-doubt-upgrade.cmd`; it calls `scripts/run-upgrade.ps1`). If DSH is still running, the window waits up to 15 minutes.
+2. Fully quit `DeepSeek Harness` (tray icon → Exit, or Task Manager: end every "DeepSeek Harness" process). The launcher detects the exit and continues automatically.
 3. The launcher builds with `tsc`, backs up the current install to `_diag\offline-upgrade-backup-<timestamp>`, copies the new `lib/`, runs `pnpm install --offline` in the profile, compares every `lib` file by SHA-256, and starts DSH.
 4. Re-run the health check: `npm run doctor` (expect every check PASS: `installed-version`, `lib-identical` 48 files / 0 differing, `preflight-module`).
 
