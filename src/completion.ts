@@ -398,6 +398,15 @@ function* outputText(text: string, usage?: Chunk): Generator<Chunk> {
   yield { type: 'finish', reason: { kind: 'stop' } }
 }
 
+/** Choose the trailing notice for an unreviewed release.
+ *  'banner' = full review notice + issues, 'short' = one line, 'off' = no notice.
+ *  The review failure itself is still logged; this only controls the user-visible tail. */
+export function reviewNotice(cfg: DoubtConfig, detailed: string): string {
+  if (cfg.reviewNotice === 'off') return ''
+  if (cfg.reviewNotice === 'short') return '\n\n——\n[dsh-doubt] 本次审核未完成，已按原稿放行。'
+  return detailed
+}
+
 /** Release an unreviewed draft with an explicit trailing banner instead of discarding
  * it. The banner is a separate block at the next free index; replay metadata is dropped
  * because the released stream no longer matches the provider's recorded block layout. */
@@ -735,9 +744,11 @@ export function createCompletionGuard(getConfig: () => DoubtConfig, log: (...arg
       // draft with an explicit "unreviewed" banner. 分段审核时只披露没审完的那几段，
       // 已审完的段不必被一起否定（逐段覆盖优于整轮放弃）。
       const detail = (decision.failure.detail ?? decision.issues[0] ?? '').slice(0, 300)
-      const banner = uncovered.length
+      const detailedBanner = uncovered.length
         ? `\n\n——\n[dsh-doubt] 以上草稿**只有部分段落完成审核**（${decision.failure.code}）：${uncovered.length} 段未能取得有效判定，其余段落已审完。\n${uncovered.slice(0, 3).map((u) => `- 第 ${u.id + 1} 段：${u.preview}…`).join('\n')}${uncovered.length > 3 ? `\n- …另有 ${uncovered.length - 3} 段未审完` : ''}\n这不代表任务失败或完成，已执行工具的结果见上方记录。`
         : `\n\n——\n[dsh-doubt] 以上草稿**未经完整审核**：审核服务未完成（${decision.failure.code}）${detail ? `；原因：${detail}` : ''}。这不代表任务失败或完成，已执行工具的结果见上方记录。`
+      const banner = reviewNotice(cfg, detailedBanner)
+      if (!banner) { yield* chunks; return }
       yield* releasedDraft(chunks, banner, usage)
       return
     }
@@ -746,7 +757,10 @@ export function createCompletionGuard(getConfig: () => DoubtConfig, log: (...arg
     if (current.rejected >= cfg.operationMaxRounds || !toolAvailable || !prefix.supported) {
       current.reviewFailed = true
       const reason = !prefix.supported ? '当前模型回放协议不支持继续补查' : toolAvailable ? '自动补查预算已用尽' : '当前会话缺少自动补查工具'
-      yield* releasedDraft(chunks, `\n\n——\n[dsh-doubt] 以上草稿**未经完整审核**（${reason}）。以下意见尚未核实：\n${decision.issues.slice(0, 3).map((s) => `- ${s.slice(0, 280)}`).join('\n')}`, usage)
+      const detailed = `\n\n——\n[dsh-doubt] 以上草稿**未经完整审核**（${reason}）。以下意见尚未核实：\n${decision.issues.slice(0, 3).map((s) => `- ${s.slice(0, 280)}`).join('\n')}`
+      const banner = reviewNotice(cfg, detailed)
+      if (!banner) { yield* chunks; return }
+      yield* releasedDraft(chunks, banner, usage)
       return
     }
     current.rejected++

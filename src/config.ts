@@ -59,6 +59,12 @@ export interface DoubtConfig {
    *  杀进程/停服务、注册表/服务、递归删除、系统目录写入）时，最终审核确定性打回，
    *  要求回滚路径 + 用户确认 + 动作后独立健康检查；false 时完全退回旧行为 */
   guardLiveMutation: boolean
+  /** 执行前闸门（tools/pre-execute）：危险 live 变更在工具执行前要求宿主权限审批；
+   *  无审批通道或策略为 never 时直接拒绝执行。false 时退回「仅事后披露」。 */
+  guardPreExecute: boolean
+  /** 最终审核未完成时回答末尾的提示：banner=完整横幅与意见；short=一行简短提示；
+   *  off=不显示（审核结论仍记录在插件内部状态）。默认 short，避免长回答总带长横幅。 */
+  reviewNotice: 'banner' | 'short' | 'off'
   /** 受保护的 live 路径片段（大小写、斜杠不敏感）；空数组按默认值处理 */
   liveMutationPaths: string[]
   /** 本机查找 node_modules / package.json 的起点 */
@@ -115,6 +121,8 @@ export const DEFAULT_CONFIG: DoubtConfig = {
   segmentedReview: true,
   reviewReasoningEffort: 'off',
   guardLiveMutation: true,
+  guardPreExecute: true,
+  reviewNotice: 'short',
   liveMutationPaths: ['.dsh/profiles', '.dsh/plugins', 'program files', 'programdata', 'c:/windows'],
   workspace: process.cwd(),
 
@@ -207,6 +215,10 @@ export function normalizeConfig(raw: unknown): DoubtConfig {
       ? (src.reviewReasoningEffort as DoubtConfig['reviewReasoningEffort'])
       : d.reviewReasoningEffort,
     guardLiveMutation: bool(src.guardLiveMutation, d.guardLiveMutation),
+    guardPreExecute: bool(src.guardPreExecute, d.guardPreExecute),
+    reviewNotice: src.reviewNotice === 'banner' || src.reviewNotice === 'short' || src.reviewNotice === 'off'
+      ? src.reviewNotice
+      : d.reviewNotice,
     liveMutationPaths: strings(src.liveMutationPaths, d.liveMutationPaths).map((s) => s.trim()),
     workspace: typeof src.workspace === 'string' && src.workspace.trim() ? src.workspace.trim() : d.workspace,
 

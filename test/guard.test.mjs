@@ -269,4 +269,50 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 历史轮（turn=1）live 安装不污染 turn=5 普通回答（mutated=false，calls=1）')
 }
 
-console.log('guard.test OK：识别规则 / 三件产物判定 / 事故回归 / 关闭开关 / 历史轮不污染 / 不误伤 全部符合预期')
+// ── 执行前闸门（tools/pre-execute）：危险操作在执行前 ask/deny ─────────────────
+{
+  const { createPreflightGuard } = await import('../lib/preflight.js')
+  const cfgOn = normalizeConfig({ guardPreExecute: true })
+  const execOf = (name, args) => ({ name, arguments: args, callId: 'c1', agent: { session: { id: 's1' } } })
+  const allow = async () => ({ kind: 'allow' })
+
+  // 有审批通道、策略 ask：危险操作返回 kind=ask（权限审批注入）
+  let asked = 0
+  const askGuard = createPreflightGuard(() => cfgOn, { approval: () => ({ overrideOf: () => 'ask' }) })
+  const askDecision = await askGuard(execOf('pwsh', { command: 'node scripts/install-local.mjs' }), allow)
+  assert.equal(askDecision.kind, 'ask', '危险操作应要求权限审批')
+  assert.ok(askDecision.reason.includes('危险变更闸门'))
+  assert.ok(askDecision.displayReason?.zh, '应带本地化审批文案')
+  asked++
+  assert.equal(asked, 1)
+
+  // 策略 never：直接 deny（无法弹审批时也不放行）
+  const denyGuard = createPreflightGuard(() => cfgOn, { approval: () => ({ overrideOf: () => 'never' }) })
+  const denyDecision = await denyGuard(execOf('pwsh', { command: 'pnpm.cmd install --offline', workdir: LIVE_PROFILE }), allow)
+  assert.equal(denyDecision.kind, 'deny', '策略 never 时应拒绝执行')
+
+  // 无审批通道：拒绝
+  const noSeam = createPreflightGuard(() => cfgOn, { approval: () => undefined })
+  assert.equal((await noSeam(execOf('edit', { file_path: LIVE_PLUGIN_INDEX }), allow)).kind, 'deny')
+
+  // 普通仓库操作 / 只读命令：放行（不干扰正常工作）
+  for (const [name, args] of [
+    ['edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }],
+    ['read', { file_path: LIVE_PLUGIN_INDEX }],
+    ['pwsh', { command: 'node --version' }],
+  ]) {
+    const decision = await askGuard(execOf(name, args), allow)
+    assert.equal(decision.kind, 'allow', `${name} 普通操作应放行`)
+  }
+
+  // 关闭开关：完全退回原行为
+  const offGuard = createPreflightGuard(() => normalizeConfig({ guardPreExecute: false }), { approval: () => ({ overrideOf: () => 'ask' }) })
+  assert.equal((await offGuard(execOf('pwsh', { command: 'node scripts/install-local.mjs' }), allow)).kind, 'allow', '关闭后不介入')
+
+  // 下游已经 deny/ask：不覆盖
+  const downstreamDeny = async () => ({ kind: 'deny', reason: 'other guard' })
+  assert.deepEqual(await askGuard(execOf('pwsh', { command: 'node scripts/install-local.mjs' }), downstreamDeny), { kind: 'deny', reason: 'other guard' })
+  console.log('  ✓ 执行前闸门：危险操作 ask（有审批）/ deny（never 或无通道）；普通操作放行；关闭开关回退')
+}
+
+console.log('guard.test OK：识别规则 / 三件产物判定 / 事故回归 / 关闭开关 / 历史轮不污染 / 不误伤 / 执行前闸门 全部符合预期')

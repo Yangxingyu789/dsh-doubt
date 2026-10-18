@@ -50,6 +50,11 @@
         # 危险变更闸门：出现 live profile/插件安装、杀进程/停服务、注册表/服务、递归删除等
         # 动作时，最终审核确定性打回，要求回滚路径 + 用户确认 + 动作后独立健康检查
         guardLiveMutation: true
+        # 执行前闸门：危险 live 变更在工具体执行前要求宿主权限审批（ask）；
+        # 无审批通道或策略为 never 时拒绝执行（deny），而不是事后才披露
+        guardPreExecute: true
+        # 最终审核未完成时的末尾提示：banner=完整横幅+意见；short=一行；off=不显示
+        reviewNotice: short
 
         maxRounds: 2
         minScore: 6

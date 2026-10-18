@@ -63,7 +63,7 @@ let tools, loop
 ctx.inject(['systemPrompt'], (c) => { tools = new ToolRuntime(c) })
 ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 ctx.inject(['agentLoop'], (c) => { loop = c.agentLoop })
-apply(ctx, { factored: exhausted, requireProvenance: false, maxRounds: exhausted ? 2 : 0, minAnswerChars: 1, minScore: 0, operationMaxRounds: 2 })
+apply(ctx, { factored: exhausted, requireProvenance: false, maxRounds: exhausted ? 2 : 0, minAnswerChars: 1, minScore: 0, operationMaxRounds: 2, reviewNotice: 'banner' })
 await new Promise((r) => setTimeout(r, 20))
 assert.ok(loop); assert.ok(tools)
 for (const name of ['fixture_write', 'fixture_read']) tools.register({ name,

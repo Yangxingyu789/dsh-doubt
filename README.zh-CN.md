@@ -119,7 +119,9 @@ pnpm install --offline
 | `segmentedReview` | `true` | 整包装不下时按段审核长草稿（见「操作取证闸」）；`false` 回退单包路径 |
 | `reviewReasoningEffort` | `off` | 审核调用的 reasoning effort。宿主 DeepSeek adapter 在未指定时默认 `high` + thinking，而 thinking 与 `max_tokens` 共用预算；实测第 1 次尝试 12000 输出 token 全花在 thinking 上、可见正文 0 字符 → `max-tokens`。`off` 把预算留给 JSON 判定；`default` 回退宿主默认 |
 | `guardLiveMutation` | `true` | 审核前的确定性危险变更闸门（见「危险变更闸门」）；`false` 完全回退旧行为 |
-| `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | `guardLiveMutation` 的受保护路径片段（大小写、斜杠不敏感） |
+| `guardPreExecute` | `true` | 执行前闸门（宿主 `tools/pre-execute` waterfall）：危险 live 变更在工具执行前要求宿主权限审批（`ask`）；无审批通道或策略为 `never` 时拒绝执行（见「执行前闸门」）；`false` 退回仅事后披露 |
+| `reviewNotice` | `short` | 最终审核未完成时的末尾提示：`banner`=完整横幅+意见，`short`=一行，`off`=不显示（审核结果仍在插件内部记录） |
+| `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | `guardLiveMutation` / `guardPreExecute` 的受保护路径片段（大小写、斜杠不敏感） |
 | `workspace` | `process.cwd()` | 本机 oracle 的查找起点 |
 | `maxRounds` | `2` | 注入轮数上限（人工发新消息即重置） |
 | `minScore` | `6` | 触发阈值，调高 = 更少打扰 |
@@ -261,6 +263,18 @@ pnpm install --offline
 
 ---
 
+## 执行前闸门
+
+`guardLiveMutation` 只能扫描**已经发生**的工具调用：它在最终回答里披露危险变更，此时破坏已经发生。`guardPreExecute`（默认 `true`）把同一套规则搬到宿主的 `tools/pre-execute` waterfall——`@deepseek-ai/dsh-tools` 在工具体执行之前运行它（`prepareExecution` → `guardReason` → `Error: <reason>`；`{kind:'ask'}` 会走宿主 ApprovalService）：
+
+- 危险 live 变更（写 `.dsh`、live `pnpm install`、安装脚本、递归删除、进程/服务/注册表改动）返回 `ask`，即使会话策略原本会自动放行，宿主也会弹出权限审批；
+- 没有审批通道或策略为 `never` 时返回 `deny`，工具体**不会执行**；
+- 普通仓库编辑与只读命令不受影响；本闸门不会覆盖其它 guard 的 deny/ask。
+
+诚实边界：该闸门只识别 `liveMutationPaths` 与命令规则覆盖的危险动作，**不能判断操作是否有证据支撑**——「无依据断言」仍由最终回答审核负责。已在真实 `ToolRuntime` 上验证（`test/host.test.mjs`：危险调用在执行前被拒绝、工具体未运行；普通 `node --version` 正常执行），并在 `test/guard.test.mjs` 覆盖 ask/deny/allow、`never` 与无审批通道分支。
+
+`reviewNotice`（默认 `short`）控制最终审核未完成时的末尾提示：`banner` 保留完整横幅与审核意见，`short` 追加一行，`off` 不追加任何提示。审核结果仍记录在插件内部，这个开关只改变用户看到的内容。
+
 ## 溯源闸
 
 断言级核验在**散文文档**上几乎没用：在一份真实的 46k 字部署手册上实测，机械判定只覆盖 21 条断言——20 条判不了，剩下 1 条还是假证伪。但同一个模型被问一句「所有的部署流程是否都有据可依？」之后，自己产出了 42 项 / 9 类的溯源表。**能力在，触发器不在。** 所以这道闸不判文档对错，只强制要一个具体产物。
@@ -372,7 +386,7 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
 | 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.6.3，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.6.3` |
+| 2 | 版本 0.7.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.7.0` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |

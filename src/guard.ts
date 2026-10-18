@@ -221,12 +221,36 @@ export function confirmationSeen(
     m && m.role === 'user' && (!m.source?.kind || ['user', 'user-approval'].includes(m.source.kind)))
   const last = humans.length ? humans[humans.length - 1] : undefined
   if (!last) return false
-  const text = collectText(last)
+  return explicitAuthorization(collectText(last))
+}
+
+/** A human message that explicitly authorizes one dangerous action.
+ *  Either a short standalone confirmation, or a confirmation word together with
+ *  the kind of action. Used for the post-hoc confirmation point AND (with the
+ *  last human message only) for the pre-execution approval seam. */
+export function explicitAuthorization(text: string): boolean {
+  const trimmed = text.trim()
   // 明确的一句确认（如用户在模型询问安装后回复「确认」）本身就是授权；
-  // 之前的规则要求同一句里同时出现动作词，会把这种真实确认误判为缺失。
-  if (/^(?:确认|批准|同意|允许|授权|approved?|confirm(?:ed)?|yes|ok)[。.!！\s]*$/i.test(text.trim())) return true
-  return /确认|批准|同意|允许|授权|approve|confirm/i.test(text)
-    && /安装|写入|修改|删除|停止|重启|install|write|delete|stop|restart/i.test(text)
+  // 旧规则要求同句出现动作词，会把这种真实确认误判为缺失。
+  if (/^(?:确认|批准|同意|允许|授权|approved?|confirm(?:ed)?|yes|ok)[。.!！\s]*$/i.test(trimmed)) return true
+  return /确认|批准|同意|允许|授权|approve|confirm/i.test(trimmed)
+    && /安装|写入|修改|删除|停止|重启|install|write|delete|stop|restart/i.test(trimmed)
+}
+
+/** Pre-execution classification for one tool call (same rules as the post-hoc trace scan).
+ *  Exported so the pre-execute gate and its tests use exactly one set of rules. */
+export function classifyToolCall(name: string, args: unknown, config: DoubtConfig): LiveMutationFinding | undefined {
+  let parsed: unknown = args
+  if (typeof args === 'string') {
+    try { parsed = JSON.parse(args) } catch { parsed = {} }
+  }
+  const normalized = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
+  const call: ToolTrace = { id: 'pre-execute', name, args: normalized, callIndex: 0, resultIndex: -1, state: 'pending', resultText: '' }
+  const candidates: LiveMutationFinding[] = []
+  const write = writeFinding(call, config)
+  if (write) candidates.push(write)
+  candidates.push(...shellFindings(call, config))
+  return pickFinding(candidates)
 }
 
 /** 动作后的独立健康检查：变更完成后另起一次工具调用并真实完成（安装回执不算） */

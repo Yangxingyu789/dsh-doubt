@@ -16,9 +16,10 @@ import { NetProbe } from './network.js'
 import { promptSection } from './prompts.js'
 import { buildVerifyTool } from './tool.js'
 import { createCompletionGuard } from './completion.js'
+import { createPreflightGuard } from './preflight.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.6.3'
+export const version = '0.7.0'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'
@@ -56,6 +57,21 @@ export function apply(ctx: Context, config: unknown): void {
   if (!cfg.enabled) {
     log('已禁用（config.enabled = false）')
     return
+  }
+
+  if (cfg.guardPreExecute) {
+    // 执行前闸门：宿主 tools/pre-execute waterfall 在工具体执行之前运行。
+    // {kind:'ask'} 会走宿主 approval seam（权限审批注入）；无审批通道或策略 never → 拒绝。
+    const preflight = createPreflightGuard(getConfig, {
+      approval: () => {
+        try { return (ctx as any).get?.('approval') ?? (ctx as any).approval } catch { return undefined }
+      },
+    })
+    const registerPreflight = () => (ctx as any).on?.('tools/pre-execute', preflight, { prepend: true })
+    // 真实 cordis 用 effect 管生命周期；最小 fake ctx（单测）没有 effect 时直接注册。
+    if (typeof (ctx as any).effect === 'function') (ctx as any).effect(registerPreflight)
+    else registerPreflight()
+    log('已启用执行前危险变更闸门（tools/pre-execute）：live 变更需权限审批；无审批通道/never 策略时拒绝')
   }
 
   if (cfg.verifyTool) {

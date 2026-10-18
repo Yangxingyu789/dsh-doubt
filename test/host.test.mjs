@@ -30,7 +30,7 @@ const { agentEvents } = await load('dsh-agent')
 const pluginAt = process.argv.indexOf('--plugin')
 const plugin = pluginAt < 0 ? new URL('../lib/index.js', import.meta.url).href : pathToFileURL(join(resolve(process.argv[pluginAt + 1]), 'lib/index.js')).href
 const { apply, version } = await import(plugin)
-assert.equal(version, '0.6.3')
+assert.equal(version, '0.7.0')
 const ctx = new Context()
 ctx.provide('systemPrompt', { tools: () => () => {}, section: () => () => {} })
 const llm = new LlmRuntime(ctx)
@@ -81,6 +81,29 @@ const accepted = await run()
 assert.equal(accepted.finish.kind, 'stop')
 assert.equal(accepted.blocks[0].text, '目标文件存在。')
 assert.equal(reviewed, 2, 'exactly one independent review per final answer, no recursion')
+
+// Pre-execution gate: dangerous live mutations are denied by the host's
+// tools/pre-execute waterfall BEFORE the tool body runs. This host test composes
+// no ApprovalService, so the gate must deny (it can only "ask" through approval).
+{
+  let ran = false
+  tools.register({
+    name: 'pwsh',
+    description: 'pre-execute guard probe',
+    parameters: { type: 'object', additionalProperties: true, properties: {} },
+    output: { schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean' } }, required: ['ok'] }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
+    async execute() { ran = true; return { ok: true } },
+  })
+  const deniedCall = await tools.execute({ callId: 'guard-danger', name: 'pwsh', arguments: JSON.stringify({ command: 'node scripts/install-local.mjs' }), agent, signal: abort.signal })
+  assert.equal(deniedCall.isError, true, 'dangerous live call must be denied before execution')
+  assert.match(JSON.stringify(deniedCall), /危险变更闸门/, 'denial must explain the gate')
+  assert.equal(ran, false, 'the tool body must not run when denied')
+  const allowedCall = await tools.execute({ callId: 'guard-safe', name: 'pwsh', arguments: JSON.stringify({ command: 'node --version' }), agent, signal: abort.signal })
+  assert.notEqual(allowedCall.isError, true, 'ordinary command must not be blocked')
+  assert.equal(ran, true, 'the tool body runs for an allowed call')
+  console.log('host.test pre-execute gate: dangerous live call denied before execution; ordinary call allowed')
+}
+
 await ctx.fiber.dispose()
 console.log('host.test PASS: real Cordis + LlmRuntime + BlockAssembler + ToolRuntime; blocked draft, executed receipt, accepted grounded answer (offline adapter)')
 console.log(`Loaded ${version}: ${plugin}`)

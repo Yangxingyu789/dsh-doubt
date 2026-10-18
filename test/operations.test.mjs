@@ -65,7 +65,7 @@ assert.equal(emitted, false, 'no token before reviewer completes')
 finishReview(); assert.equal((await first).value.type, 'block-start')
 assert.equal(visible(await collect({ [Symbol.asyncIterator]: () => stream })), packet.draft)
 delayed.installed.dispose()
-const denied = harness({ config: { operationMaxRounds: 1 }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
+const denied = harness({ config: { operationMaxRounds: 1, reviewNotice: 'banner' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
 assert.equal(visible(await collect(await denied.run())), '')
 const exhaustedOut = visible(await collect(await denied.run()))
 assert.ok(exhaustedOut.includes(packet.draft), 'terminal review never swallows the answer')
@@ -75,7 +75,7 @@ assert.equal(denied.guard.failedTurn(denied.agent, 1), true)
 assert.equal(visible(await collect(await denied.run(packet.draft, 2))), '', 'new turn resets budget')
 denied.installed.dispose()
 for (const review of [() => { throw Error('synchronous adapter failure') }, () => iterable(textChunks('not json')), () => iterable([{ type: 'finish', reason: { kind: 'error' } }]), async function* () { await new Promise(() => {}) }]) {
-  const h = harness({ config: { operationMaxRounds: 2, reviewTimeoutMs: 100 }, review })
+  const h = harness({ config: { operationMaxRounds: 2, reviewTimeoutMs: 100, reviewNotice: 'banner' }, review })
   const start = Date.now()
   const output = await collect(await h.run())
   const shown = visible(output)
@@ -85,8 +85,26 @@ for (const review of [() => { throw Error('synchronous adapter failure') }, () =
   assert.equal(h.guard.failedTurn(h.agent, 1), true)
   assert.ok(Date.now() - start < 1500); h.installed.dispose()
 }
+// reviewNotice: 'short'（默认）= 一行提示；'off' = 回答末尾完全不出现插件提示。
+{
+  const shortRun = harness({ config: { operationMaxRounds: 1 }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
+  await collect(await shortRun.run()) // 第一次触发 doubt_review 回执
+  const out = visible(await collect(await shortRun.run()))
+  assert.ok(out.includes(packet.draft), 'short 模式仍放行原稿')
+  assert.match(out, /本次审核未完成，已按原稿放行/)
+  assert.ok(!out.includes('自动补查预算已用尽'), 'short 模式不附意见明细')
+  shortRun.installed.dispose()
+  const offRun = harness({ config: { operationMaxRounds: 1, reviewNotice: 'off' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
+  await collect(await offRun.run())
+  const out2 = visible(await collect(await offRun.run()))
+  assert.ok(out2.includes(packet.draft), 'off 模式仍放行原稿')
+  assert.ok(!out2.includes('dsh-doubt'), 'off 模式末尾不出现插件提示')
+  offRun.installed.dispose()
+  assert.equal(normalizeConfig({}).reviewNotice, 'short', '默认 reviewNotice=short')
+  assert.equal(normalizeConfig({}).guardPreExecute, true, '默认 guardPreExecute=true')
+}
 assert.equal((await reviewPacket({ ...packet, draft: 'x'.repeat(2000) }, {}, { stream: () => { throw Error('must not call') } }, normalizeConfig({ reviewMaxChars: 1000 }))).approved, false)
-const noTools = harness({ review: () => iterable(textChunks('{"decision":"verify","issues":["missing"]}')) })
+const noTools = harness({ config: { reviewNotice: 'banner' }, review: () => iterable(textChunks('{"decision":"verify","issues":["missing"]}')) })
 noTools.request.tools = []; assert.match(visible(await collect(await noTools.run())), /缺少自动补查工具/); noTools.installed.dispose()
 const cancelled = harness({ review: async function* () { await new Promise(() => {}) } })
 const pending = collect(await cancelled.run()); setTimeout(() => cancelled.controller.abort(), 10)
@@ -99,7 +117,7 @@ assert.equal((await reviewPacket(packet, {}, { stream: async function* () {
   for (const text of fragmented) yield { type: 'text-delta', index: 1, text }
   yield { type: 'finish', reason: { kind: 'stop' } }
 } }, normalizeConfig({ reviewMaxChars: 1000 }))).approved, true, 'protocol overhead/reasoning must not count as JSON response text')
-const replay = harness({ review: () => iterable(textChunks('{"decision":"verify","issues":["missing check"]}')) })
+const replay = harness({ config: { reviewNotice: 'banner' }, review: () => iterable(textChunks('{"decision":"verify","issues":["missing check"]}')) })
 await replay.run()
 const nativeDraft = [
   { type: 'block-start', index: 0, blockType: 'reasoning' },

@@ -1,5 +1,17 @@
 # 更新日志
 
+## 0.7.0（执行前危险变更闸门 + 可配置的末尾提示）
+
+- **执行前闸门 `guardPreExecute`（默认 `true`）**：改用宿主 `@deepseek-ai/dsh-tools` 的 `tools/pre-execute` waterfall（`prepareExecution` → `guardReason` → `Error: <reason>`；`{kind:'ask'}` 走宿主 ApprovalService）。危险 live 变更在**工具执行之前**被拦截：
+  - 有审批通道且策略不是 `never` → 返回 `ask`（权限审批注入，宿主弹出审批）；
+  - 无审批通道或策略为 `never` → 返回 `deny`，**工具体不执行**，模型收到带原因的错误；
+  - 普通仓库编辑 / 只读命令不受影响；不覆盖其它 guard 的 deny/ask。
+  - 复用 `guardLiveMutation` 的识别规则（`classifyToolCall` 与事后扫描共用一套规则），覆盖 live `.dsh` 写入、live `pnpm install`、install-local 脚本、递归删除、杀进程/停服务/注册表/自启。
+- **真机验证**（`test/host.test.mjs`，真实 Cordis + ToolRuntime）：危险调用（`node scripts/install-local.mjs`）返回 `isError` 且包含「危险变更闸门」，工具体 `ran=false`；普通 `node --version` 正常执行且工具体运行。`test/guard.test.mjs` 另覆盖 ask/deny/allow、`never`、无审批通道与开关回退。
+- **末尾提示可配置 `reviewNotice`（默认 `short`）**：最终审核未完成时，原来总是附完整横幅+意见；现在 `banner`=完整、`short`=一行、`off`=不显示。审核结果仍写内部日志，仅改变用户可见内容，避免长回答总带长横幅。
+- **测试/审计**：`npm test`（11 文件）/smoke/audit 13 项/host.test/host-loop 四模式全部 exit 0。
+- **诚实边界**：前置闸门只能阻止「危险 live 变更」，不能判断一个普通操作是否有证据支撑；「无依据断言」仍依靠最终审核，审核器会漏判/误判。当前会话审批策略为 `never` 时，危险操作会被**直接拒绝**而不是弹审批——要看到审批提示，需要把审批策略改为允许询问。安装 0.7.0 后需要重启宿主才会加载前置闸门。
+
 ## 0.6.3（缩小审核范围 + 提高审核预算：用户选 A+B）
 
 - **背景**：0.6.2 装上后，长回答仍在审核回执预算用尽时附横幅。实测 turn 12（重启后）：插件发出 3 份 `verify` 回执（toolCallId 前缀 `dsh-doubt-*`，时间 12:45:21 / 12:46:35 / 12:46:54），每份恰好 3 条意见，均不含 guard 的「危险变更缺少回滚路径」；另有 8 条 `invalid` 回执来自手动无效 reviewId 调用（`call_00_*`）。对照 turn 10（旧版）同一类只读命令曾触发 guard 误报、turn 11 回执意见数 3/5/8 不封顶。

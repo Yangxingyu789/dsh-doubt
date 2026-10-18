@@ -118,7 +118,9 @@ Override in your profile's `cordis.patch.yml` (later layers win):
 | `segmentedReview` | `true` | Review long drafts part by part when the full packet does not fit (see "Operation evidence gate"); `false` restores the single-packet path |
 | `reviewReasoningEffort` | `off` | Reasoning effort for the reviewer call. The host DeepSeek adapter defaults to `high` + thinking when omitted, and thinking shares `max_tokens`; measured attempt 1 spent all 12000 output tokens on thinking with 0 visible text → `max-tokens`. `off` keeps the budget for the JSON verdict; `default` restores the old host default |
 | `guardLiveMutation` | `true` | Deterministic live-mutation gate before review (see "Live-mutation gate"); `false` restores the previous behaviour exactly |
-| `liveMutationPaths` | `.dsh/profiles`, `.dsh/plugins`, `program files`, `programdata`, `c:/windows` | Protected path fragments for `guardLiveMutation` (case- and slash-insensitive) |
+| `guardPreExecute` | `true` | Pre-execution gate on the host's `tools/pre-execute` waterfall: dangerous live mutations require host approval before the tool runs (`ask`), and are denied when no approval channel exists or the policy is `never` (see "Pre-execution guard"); `false` restores post-hoc disclosure only |
+| `reviewNotice` | `short` | Tail notice when final-answer review did not complete: `banner` = full notice + issues, `short` = one line, `off` = no notice (review result is still logged internally) |
+| `liveMutationPaths` | `.dsh/profiles`, `.dsh/plugins`, `program files`, `programdata`, `c:/windows` | Protected path fragments for `guardLiveMutation` / `guardPreExecute` (case- and slash-insensitive) |
 | `workspace` | `process.cwd()` | Where local oracles start looking |
 | `maxRounds` | `2` | Injection budget (reset by a new human message) |
 | `minScore` | `6` | Trigger threshold |
@@ -236,6 +238,18 @@ With all three present the normal review still runs, and the reviewer also check
 **Coverage and honesty:** the detector, the rejection path and the incident timeline are covered by unit and controlled-reviewer tests in `test/guard.test.mjs`. Real long tasks and real host sessions have **not** been verified: the inferred hot-reload mechanism has no host log, and the gate has not been observed in a live DSH session.
 
 ---
+
+## Pre-execution guard
+
+`guardLiveMutation` can only scan tool calls that already happened: it discloses a dangerous mutation in the final answer, after the damage. `guardPreExecute` (default `true`) moves the same rule set to the host's `tools/pre-execute` waterfall, which `@deepseek-ai/dsh-tools` runs before a tool body executes (`prepareExecution` → `guardReason` → `Error: <reason>`; a `{kind:'ask'}` decision is routed through the host's ApprovalService). Consequences:
+
+- a dangerous live mutation (live `.dsh` writes, live `pnpm install`, install script, recursive delete, process/service/registry changes) returns `ask`, so the host shows a permission prompt even when the session policy would otherwise auto-approve;
+- with no approval channel or an explicit `never` policy, the gate returns `deny` and the tool body never runs;
+- ordinary repository edits and read-only commands are untouched; the pre-execute decision never overrides another guard's deny/ask.
+
+Honest limits: the gate only recognizes the patterns in `liveMutationPaths` + the command rules; it cannot judge whether an operation is *backed by evidence*, only whether it is a live-host mutation. The final-answer review remains the layer for unsupported claims. Verified in `test/host.test.mjs` against the real `ToolRuntime` (dangerous call denied before its body runs; ordinary `node --version` allowed) and in `test/guard.test.mjs` for ask/deny/allow and the `never`/no-seam paths.
+
+`reviewNotice` (default `short`) controls the trailing text when final-answer review does not complete: `banner` keeps the full notice with the reviewer's issues, `short` appends one line, `off` appends nothing. The review result is still logged internally; the setting only changes what the user sees.
 
 ## Provenance gate
 
@@ -401,7 +415,7 @@ than quietly dropped.
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
 | 1 | 11 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 11 `node test/*.test.mjs`; rerun with `npm run verify` |
-| 2 | Version 0.6.3, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.6.3` |
+| 2 | Version 0.7.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.7.0` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |
