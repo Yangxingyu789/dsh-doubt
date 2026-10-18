@@ -144,16 +144,23 @@ function deleteTargets(command: string): string[] {
   if (!verb) return []
   const tail = command.slice(verb.index + verb[0].length)
   const tokens = tail.match(/"[^"]*"|'[^']*'|[^\s;|]+/g) ?? []
-  const targets: string[] = []
+  const candidates: string[] = []
   for (const raw of tokens) {
     const token = raw.replace(/^["']|["']$/g, '')
     if (!token) continue
     if (/^[-/]/.test(token)) continue // PowerShell/cmd flags (paths start with a drive letter)
     if (/^(?:-|&&|\|\||\||;)/.test(token)) continue
-    targets.push(token)
-    if (targets.length >= 4) break
+    candidates.push(token)
+    if (candidates.length >= 8) break
   }
-  return targets
+  // Only path-like tokens are delete targets. Without this filter, `Remove-Item <path> -Recurse;
+  // Write-Host ...` would treat `Write-Host`/message strings as targets and conservatively flag
+  // a safe temp cleanup (observed live on 0.8.1).
+  const pathLike = candidates.filter((token) => /[\\/]/.test(token) || /^[a-z]:/i.test(token) || /^\$/.test(token)
+    || /^%[^%]+%/.test(token) || /^\.\.?([\\/]|$)/.test(token))
+  // No visible path (e.g. relative name for `rm -rf node_modules`): keep the tokens so the
+  // caller can still decide via the working directory; unknown remainders stay conservative.
+  return (pathLike.length ? pathLike : candidates).slice(0, 4)
 }
 
 function dangerousDeleteTarget(target: string, workdir: string, config: DoubtConfig): boolean {

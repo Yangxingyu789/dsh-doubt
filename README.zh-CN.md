@@ -386,7 +386,7 @@ PASS/FAIL：仓库与安装版版本、`dsh-plugin.json` 版本；仓库 / live 
 | # | README 里的断言 | 依据 | 怎么核对 / 为什么核不了 |
 |---|---|---|---|
 | 1 | 11 套测试 + smoke，另有 13 项仓库自检 | **有出处** | `package.json` 的 `test` 脚本串了 11 个 `node test/*.test.mjs`；可用 `npm run verify` 重跑 |
-| 2 | 版本 0.8.0，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.8.0` |
+| 2 | 版本 0.8.2，`package.json` 与 `dsh-plugin.json` 一致 | **有出处** | `npm run audit` 输出 `版本一致：0.8.2` |
 | 3 | 挂载行**必须**用顶层 `insert:`，否则宿主根本不挂 | **有出处** | 宿主 `@deepseek-ai/dsh-app-boot` 的 `applyEntryPatches` 从空列表起算；可用一次性 profile 跑 `dsh --profileX --dump-config` 复现——无 `insert:` 时 stdout 2 字节、stderr 报 `patch: entry "dsh-doubt" not found`；有 `insert:` 时 stdout 461 字节且含 `- id: dsh-doubt`（`npm run verify:independent` 第 1 项） |
 | 4 | 服务只能通过 `ctx.inject` 解析；在外层 ctx 上读会抛错 | **有出处** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`：`cannot get property "${prop}" without inject`；`verify:independent` 第 3 项在真实 cordis 上注册成功 |
 | 5 | 会话工作目录是 `exec.agent.session.header.cwd` | **有出处** | 宿主源码两处独立一致：`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294` |

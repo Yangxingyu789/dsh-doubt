@@ -415,7 +415,7 @@ than quietly dropped.
 | # | Claim in this README | Basis | Where to check it / why it cannot be checked |
 |---|---|---|---|
 | 1 | 11 test suites + smoke, plus 13 repository checks | **sourced** | `package.json`'s `test` script chains 11 `node test/*.test.mjs`; rerun with `npm run verify` |
-| 2 | Version 0.8.0, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.8.0` |
+| 2 | Version 0.8.2, consistent in `package.json` and `dsh-plugin.json` | **sourced** | `npm run audit` prints `版本一致：0.8.2` |
 | 3 | The bundle row **must** use a top-level `insert:`, or the host never mounts it | **sourced** | host source `@deepseek-ai/dsh-app-boot` (`applyEntryPatches` starts from an empty list); reproducible with `dsh --profileX --dump-config` on a throwaway profile — without `insert:` stdout is 2 bytes and stderr says `patch: entry "dsh-doubt" not found`, with it stdout is 461 bytes containing `- id: dsh-doubt` (`npm run verify:independent`, item 1) |
 | 4 | Services resolve only through `ctx.inject`; reading them on the outer context throws | **sourced** | `@deepseek-ai/cordis/src/reflect.ts:144` = `lib/index.js:676`: `cannot get property "${prop}" without inject`; `npm run verify:independent` item 3 registers under the real cordis |
 | 5 | The session working directory is `exec.agent.session.header.cwd` | **sourced** | host source, two independent packages: `dsh-tool-fs/lib/index.js:173` and `dsh-tool-bash/lib/index.js:294` |

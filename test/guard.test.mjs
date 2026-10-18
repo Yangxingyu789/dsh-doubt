@@ -71,6 +71,8 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
     ['Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"', 'temp path must be allowed', false],
     ['Remove-Item -Recurse -Force $env:TEMP\\probe', '$env:TEMP must be allowed', false],
     ['rm -rf node_modules', null, false, 'E:\\dsh-doubt'],
+    ['Remove-Item "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe" -Recurse -Force; Write-Host "deleted=$?"', 'temp delete with trailing Write-Host must be allowed (0.8.2 parser fix)', false],
+    ['Remove-Item $dir -Recurse -Force', 'variable target stays conservative (blocked)', true],
     ['Remove-Item -Recurse C:\\Windows\\System32\\drivers', 'system dir must be blocked', true],
     ['Remove-Item -Recurse C:\\', 'drive root must be blocked', true],
     ['Remove-Item -Recurse C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt', 'live path must be blocked', true],

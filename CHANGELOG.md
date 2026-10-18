@@ -1,5 +1,13 @@
 # 更新日志
 
+## 0.8.2（修复递归删除目标解析：命令行尾部的非路径 token 被误当成删除目标）
+
+- **实机发现**（0.8.1 运行时实测）：`Remove-Item 'C:\...\Temp\probe' -Recurse -Force; Write-Host "..."` 仍被 `recursive-delete` 拒绝。原因在 `deleteTargets`：取删除动词后的前 4 个非 flag token，把 `Write-Host` 和提示字符串也当成了“目标”，其中一个不是 temp/live/系统路径 → 保守判危险。
+- **修复**：只把“路径状”token 作为目标（含 `\`/`/`、盘符、`$变量`、`%VAR%`、`./`）；在没有路径状 token 时（如 `rm -rf node_modules`）回退到全部 token 交给 workdir 规则判断；变量目标仍保守拦截。
+- **测试**：`test/guard.test.mjs` 新增「temp 删除 + 尾部 Write-Host 放行」「`$dir` 变量目标拦截」用例；`npm test` 11 文件、smoke、audit 13 项、host.test（0.8.2）、host-loop 四模式全部 exit 0。
+- **诚实边界**：目标解析仍是启发式；变量/管道/子 shell 里的路径可能被判为未知而保守拦截（0.8.1 实机就因此拦了 `Remove-Item $p -Recurse`）。
+- **安装**：需再次离线升级（桌面 `dsh-doubt-upgrade.cmd`）才会把此修复装进 live 插件；仓库 0.8.2 已通过源码/测试验证，运行期效果待升级后实测。
+
 ## 0.8.1（写入方向判定 + 离线升级脚本）
 
 - **修误报：从 live 路径复制出来不是变更**。0.8.0 之前 `/当命令同时含 live 路径与写动词` 会一律判危险；实测连「备份 live 插件目录」的 `Copy-Item live → _diag` 都被执行前闸门拒绝。现在解析写入方向：`Copy-Item/Move-Item/cp/mv/xcopy/robocopy` 只看**目标**（最后一个路径 token）；`Set-Content/Out-File/Add-Content/New-Item/tee` 优先取 `-Path/-Destination`，否则取路径 token；重定向 `>` 只看重定向目标。live 路径只作为**只读来源**时不拦；写入目标命中 live 路径才拦；无法识别目标的形状仍保守拦截。
