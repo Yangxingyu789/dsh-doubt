@@ -77,3 +77,19 @@ npm run verify         # 完整验证链（含宿主测试）
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。更新日志：[CHANGELOG.md](CHANGELOG.md)。
+## 逐步骤溯源表（0.1.0）
+
+以下条目在写入本表前核对（本地文件、`git ls-remote`、命令输出）。未抓取任何外部链接，因此徽章可达性明确标注为未验证。
+
+| # | 条目 | 断言 | 依据 | 类别 |
+|---|---|---|---|---|
+| 1 | 版本 | 两个清单与插件源码均为 0.1.0 | `package.json:3`、`dsh-plugin.json:5`、`src/index.ts:13`；`npm run audit` → `版本一致：0.1.0` | 有出处 |
+| 2 | 宿主加载 | 插件以 0.1.0 加载 | `node test/host.test.mjs` → `Loaded 0.1.0` | 有出处 |
+| 3 | 发布检查 | 11 个测试文件、smoke、audit 13 项、host-loop 四模式通过 | 提交 `e9061bf` 前的命令输出 | 有出处 |
+| 4 | 注释清理方法 | 使用 TS AST/scanner 辅助函数 | TypeScript 5.9.3；`node_modules/typescript/lib/typescript.d.ts:8505`（`getLeadingCommentRanges`）、`:8521`（`getTextPos`）、`:8523`（`getTokenPos`） | 有出处 |
+| 5 | 清理脚本 | 未提交进仓库 | `git ls-files scripts/strip-cn-comments.mjs` → 0；`Test-Path` → False | 有出处（否定核对） |
+| 6 | 中文注释 | src/test/scripts 中已无中文注释行 | `Select-String '^\s*(//|\*|/\*).*CJK'` → 0 行 | 有出处 |
+| 7 | Git 引用 | 远端 main 与 tag 均指向发布提交 | `git ls-remote origin refs/heads/main` → `e9061bf`；`v0.1.0^{}` → `e9061bf` | 有出处 |
+| 8 | live 安装 | 已安装插件仍是 0.8.4（0.1.0 未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | 有出处 |
+| 9 | 徽章可达性 | CI/License/Node/Version 徽章在 GitHub 正常显示 | 未抓取 URL；shields.io 与 GitHub Actions 徽章地址为常规用法 | 无依据（未验证） |
+| 10 | 兼容性表述 | “0.1.0 是首个公开版本，接口可能变化” | 规划性表述，无实测产物 | 无依据 |

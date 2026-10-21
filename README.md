@@ -86,3 +86,19 @@ npm run verify         # full chain, including host tests
 ## License
 
 MIT — see [LICENSE](LICENSE). Changelog: [CHANGELOG.md](CHANGELOG.md).
+## 逐步骤溯源表（0.1.0）
+
+Checked before this section was written (local files, `git ls-remote`, command output). No external URL was fetched, so badge reachability is explicitly left unverified.
+
+| # | Item | Claim | Evidence | Class |
+|---|---|---|---|---|
+| 1 | Version | 0.1.0 in both manifests and plugin source | `package.json:3`, `dsh-plugin.json:5`, `src/index.ts:13`; `npm run audit` → `版本一致：0.1.0` | sourced |
+| 2 | Host load | Plugin loads as 0.1.0 | `node test/host.test.mjs` → `Loaded 0.1.0` | sourced |
+| 3 | Release checks | 11 test files, smoke, audit 13 items, host-loop 4 modes pass | command output before commit `e9061bf` | sourced |
+| 4 | Comment cleanup method | TS AST/scanner helpers used | TypeScript 5.9.3; `node_modules/typescript/lib/typescript.d.ts:8505` (`getLeadingCommentRanges`), `:8521` (`getTextPos`), `:8523` (`getTokenPos`) | sourced |
+| 5 | Cleanup script | Not committed to the repository | `git ls-files scripts/strip-cn-comments.mjs` → 0; `Test-Path` → False | sourced (negative) |
+| 6 | CJK comments | No Chinese comment lines remain in src/test/scripts | `Select-String '^\s*(//|\*|/\*).*CJK'` → 0 lines | sourced |
+| 7 | Git refs | Remote main and tag point at the release commit | `git ls-remote origin refs/heads/main` → `e9061bf`; `v0.1.0^{}` → `e9061bf` | sourced |
+| 8 | Live install | Installed plugin is still 0.8.4 (0.1.0 not installed) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | sourced |
+| 9 | Badge reachability | CI/License/Node/Version badges render on GitHub | No HTTP fetch was performed; shields.io and GitHub Actions badge URLs are conventional | unsourced (not verified) |
+| 10 | Compatibility statement | "0.1.0 is the first public release; interfaces may change" | Planning statement, no measured artifact | unsourced |

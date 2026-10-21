@@ -411,3 +411,19 @@
 | 6 | `hasMaterialClaims`（复数） | 不存在，文档只用单数 | `src/**`、`test/**` 中 `Select-String hasMaterialClaims` → 0 命中（本轮；文档提到它只是为了记录“不存在”） | 有出处（否定核对） |
 | 7 | 0.8.3 测试链 | 11 套件、audit 13 项、host 加载 0.8.3、host-loop 四模式 | `npm test` exit 0 且 11 个 `.test OK`；`node scripts/audit.mjs` → 13 项且 `版本一致：0.8.3`；`test/host.test.mjs` → `Loaded 0.8.3`；`host-loop.test.mjs` 四模式 exit 0 | 有出处 |
 | 8 | 0.8.3 运行期行为 | 未验证 | 0.8.3 尚未装入 live profile（live 为 0.8.2） | 无依据（未验证） |
+## 逐步骤溯源表（0.1.0）
+
+以下条目在写入本表前核对（本地文件、`git ls-remote`、命令输出）。未抓取任何外部链接，因此徽章可达性明确标注为未验证。
+
+| # | 条目 | 断言 | 依据 | 类别 |
+|---|---|---|---|---|
+| 1 | 版本 | 两个清单与插件源码均为 0.1.0 | `package.json:3`、`dsh-plugin.json:5`、`src/index.ts:13`；`npm run audit` → `版本一致：0.1.0` | 有出处 |
+| 2 | 宿主加载 | 插件以 0.1.0 加载 | `node test/host.test.mjs` → `Loaded 0.1.0` | 有出处 |
+| 3 | 发布检查 | 11 个测试文件、smoke、audit 13 项、host-loop 四模式通过 | 提交 `e9061bf` 前的命令输出 | 有出处 |
+| 4 | 注释清理方法 | 使用 TS AST/scanner 辅助函数 | TypeScript 5.9.3；`node_modules/typescript/lib/typescript.d.ts:8505`（`getLeadingCommentRanges`）、`:8521`（`getTextPos`）、`:8523`（`getTokenPos`） | 有出处 |
+| 5 | 清理脚本 | 未提交进仓库 | `git ls-files scripts/strip-cn-comments.mjs` → 0；`Test-Path` → False | 有出处（否定核对） |
+| 6 | 中文注释 | src/test/scripts 中已无中文注释行 | `Select-String '^\s*(//|\*|/\*).*CJK'` → 0 行 | 有出处 |
+| 7 | Git 引用 | 远端 main 与 tag 均指向发布提交 | `git ls-remote origin refs/heads/main` → `e9061bf`；`v0.1.0^{}` → `e9061bf` | 有出处 |
+| 8 | live 安装 | 已安装插件仍是 0.8.4（0.1.0 未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | 有出处 |
+| 9 | 徽章可达性 | CI/License/Node/Version 徽章在 GitHub 正常显示 | 未抓取 URL；shields.io 与 GitHub Actions 徽章地址为常规用法 | 无依据（未验证） |
+| 10 | 兼容性表述 | “0.1.0 是首个公开版本，接口可能变化” | 规划性表述，无实测产物 | 无依据 |
