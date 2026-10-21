@@ -54,10 +54,10 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
 {
   let calls = 0
   const out = await reviewDraft([], 1, msgs, draft, {}, {
-    stream: () => {
+    stream: (r) => {
       calls++
       if (calls === 2) return iterable(textChunks(JSON.stringify({ decision: 'verify', issues: ['第 2 段缺少工具依据'] })))
-      return iterable(textChunks(approveReply({ messages: [{ content: [{ text: JSON.stringify({ draftParts: [] }) }] }] })))
+      return iterable(textChunks(approveReply(r)))
     },
   }, cfg)
   assert.equal(out.decision.approved, false)
@@ -70,7 +70,8 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
 
 {
   let calls = 0
-  const out = await reviewDraft(historyEvent('read', 'True'), 1, msgs, draft, {}, {
+  const current = historyEvent('current', 'True').map((e) => ({ ...e, data: { ...e.data, turn: 1 } }))
+  const out = await reviewDraft([...historyEvent('read', 'True'), ...current], 1, msgs, draft, {}, {
     stream: (r) => {
       calls++
       if (calls === 2) return iterable([{ type: 'finish', reason: { kind: 'error', failure: { code: 'REVIEW_TIMEOUT' } } }])

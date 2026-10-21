@@ -30,7 +30,7 @@ const { agentEvents } = await load('dsh-agent')
 const pluginAt = process.argv.indexOf('--plugin')
 const plugin = pluginAt < 0 ? new URL('../lib/index.js', import.meta.url).href : pathToFileURL(join(resolve(process.argv[pluginAt + 1]), 'lib/index.js')).href
 const { apply, version } = await import(plugin)
-assert.equal(version, '0.1.0')
+assert.equal(version, '0.1.1')
 const ctx = new Context()
 ctx.provide('systemPrompt', { tools: () => () => {}, section: () => () => {} })
 const llm = new LlmRuntime(ctx)
@@ -105,5 +105,36 @@ assert.equal(reviewed, 2, 'exactly one independent review per final answer, no r
 }
 
 await ctx.fiber.dispose()
+
+// Real host PTC presentation: get() sees registered tools, but direct calls to
+// them are forbidden. The guard must not inject a doomed receipt in this mode.
+{
+  const ptcCtx = new Context()
+  ptcCtx.provide('systemPrompt', { tools: () => () => {}, section: () => () => {}, getSectionOrder: () => 0 })
+  const ptcLlm = new LlmRuntime(ptcCtx)
+  let ptcTools
+  ptcCtx.inject(['systemPrompt'], (c) => { ptcTools = new ToolRuntime(c, { mode: 'ptc' }) })
+  apply(ptcCtx, { factored: false, requireProvenance: false, maxRounds: 0, reviewNotice: 'banner' })
+  await new Promise((r) => setTimeout(r, 30))
+  class PtcFixture extends LlmAdapter {
+    async *stream(options) {
+      yield* chunks(options.sessionId ? '任务已经修复。' : '{"decision":"verify","issues":["缺少验收证据"]}')
+    }
+  }
+  ptcLlm.registerAdapter(['fixture'], new PtcFixture())
+  const ptcAgent = { id: 'ptc-host-test', session: { id: 'ptc-host-test', snapshotEvents: () => [] } }
+  const ptcSignal = new AbortController().signal
+  assert.ok(ptcTools.get('doubt_review', ptcAgent))
+  assert.equal(ptcTools.resolveExecution('doubt_review', ptcAgent, false), undefined)
+  const ptcDispatch = agentEvents(ptcCtx, ptcAgent)
+  await ptcDispatch.waterfall('agent/request', { turn: 1, step: 1, signal: ptcSignal }, async () => ({ provider: 'fixture', model: 'fixture-model' }))
+  const seen = []
+  for await (const c of ptcLlm.stream({ provider: 'fixture', model: 'fixture-model', sessionId: ptcAgent.id,
+    signal: ptcSignal, messages: request.messages, tools: [{ name: 'run_code', description: 'PTC transport', parameters: { type: 'object', properties: {} } }] })) seen.push(c)
+  assert.equal(seen.some((c) => c.type === 'tool-call-delta'), false, 'no host-rejected direct receipt')
+  assert.match(seen.filter((c) => c.type === 'text-delta').map((c) => c.text).join(''), /缺少自动补查工具/)
+  await ptcCtx.fiber.dispose()
+  console.log('host.test PTC: registered but non-callable receipt is not injected')
+}
 console.log('host.test PASS: real Cordis + LlmRuntime + BlockAssembler + ToolRuntime; blocked draft, executed receipt, accepted grounded answer (offline adapter)')
 console.log(`Loaded ${version}: ${plugin}`)

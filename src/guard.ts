@@ -45,7 +45,7 @@ const SHELL_TOOLS = new Set(['pwsh', 'bash', 'shell', 'ops_pwsh', 'ops_bash', 'e
 const WRITE_PATH_KEYS = ['file_path', 'filePath', 'path', 'target', 'dest', 'destination', 'to'] as const
 const WORKDIR_KEYS = ['workdir', 'cwd', 'dir', 'workingDirectory'] as const
 
-const norm = (s: string): string => s.replace(/\\/g, '/').toLowerCase()
+const norm = (s: string): string => s.replace(/[\\/]+/g, '/').toLowerCase()
 
 const inScope = (call: ToolTrace, turn: number): boolean => call.turn === undefined || call.turn === turn
 const clip = (s: string): string => (s.length > MAX_TARGET ? s.slice(0, MAX_TARGET) : s)
@@ -90,6 +90,32 @@ function commandTexts(args: Record<string, unknown>): string[] {
   return texts
 }
 
+const MAX_WRAP_DEPTH = 3
+
+/** Decode a PowerShell `-EncodedCommand` payload (UTF-16LE base64). */
+function decodeEncodedCommand(command: string): string | undefined {
+  const match = /(?:^|[\s;|])-enc(?:odedcommand)?\s+([A-Za-z0-9+/=]{8,})/i.exec(command)
+  if (!match) return undefined
+  try {
+    const decoded = Buffer.from(match[1], 'base64').toString('utf16le')
+    if (decoded.length >= 4 && /^[\x09\x0a\x0d\x20-\x7e]+$/.test(decoded)) return decoded
+  } catch { /* ignore malformed payloads */ }
+  return undefined
+}
+
+/** Inner command strings for common wrappers (`cmd /c`, `powershell -Command`, encoded payloads). */
+function expandWrappedCommands(command: string, depth = 0): string[] {
+  if (depth >= MAX_WRAP_DEPTH) return []
+  const out: string[] = []
+  const decoded = decodeEncodedCommand(command)
+  if (decoded) out.push(decoded)
+  const cmdMatch = /\bcmd(?:\.exe)?\b[^\n]*?\s\/c\s+([\s\S]+)$/i.exec(command)
+  if (cmdMatch) out.push(cmdMatch[1].replace(/^["']|["']$/g, ''))
+  const psMatch = /\b(?:powershell|pwsh)(?:\.exe)?\s+(?:-command|-c)\s+([\s\S]+)$/i.exec(command)
+  if (psMatch) out.push(psMatch[1].replace(/^["']|["']$/g, ''))
+  return [...new Set(out.flatMap((inner) => [inner, ...expandWrappedCommands(inner, depth + 1)]))]
+}
+
 
 
 const RE_INSTALL = /\b(?:pnpm|npm|yarn|corepack)(?:\.cmd|\.exe)?\s+(?:install|i|add|ci|rebuild)\b/i
@@ -101,12 +127,19 @@ const RE_RECURSIVE_DELETE = /\b(?:remove-item|rmdir|rd|del|erase|rm)\b[^\n]*(?:\
 // as a live write and gated the answer. Drop arrow/comparison operators before testing
 // redirect-style writes.
 const stripOperators = (command: string): string => command.replace(/=>|->|>=|<=/g, ' ')
-const RE_MUTATION_VERB = /\b(?:remove-item|del|erase|rmdir|rm|move-item|mv|copy-item|cp|set-content|out-file|add-content|new-item|tee)\b|(?:^|[\s\w)\]"])\s*>{1,2}\s*[^\s>&]/i
+const RE_MUTATION_VERB = /\b(?:remove-item|del|erase|rmdir|rm|move-item|mv|copy-item|cp|copy|move|ren|rename|xcopy|robocopy|rsync|set-content|out-file|add-content|new-item|tee|expand-archive|compress-archive|tar|unzip|7z|set-itemproperty|new-itemproperty|rename-item|set-acl|icacls|takeown|attrib|mklink|invoke-webrequest|iwr|curl|wget|start-bitstransfer|dd)\b|(?:^|[\s\w)\]"])\s*>{1,2}\s*[^\s>&]/i
 const RE_DELETE_VERB = /\b(?:remove-item|rmdir|rd|del|erase|rm)\b/i
-const RE_PROCESS = /\b(?:stop-process|taskkill|kill|shutdown|restart-computer|stop-service|sc\s+stop|net\s+stop)\b/i
+const RE_MOVE_VERB = /\b(?:move-item|mv|move|ren|rename|rename-item)\b/i
+const RE_GIT_WRITE = /\bgit\b[^\n]*\s(?:checkout|clean|reset|restore|stash|pull|merge|apply|revert|switch|rm|mv)\b/i
+const RE_GIT_DELETE = /\bgit\b[^\n]*\s(?:clean|reset|restore)\b/i
+const RE_ACL_WRITE = /\b(?:icacls|takeown|attrib|cacls|set-acl)\b/i
+const RE_JS_WRITE = /\b(?:writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream|copyFileSync|cpSync|renameSync|mkdirSync)\b/
+const RE_JS_DELETE = /\b(?:rmSync|rmdirSync|unlinkSync)\b/
+const RE_PROCESS = /\b(?:stop-process|taskkill|kill|shutdown|restart-computer|stop-service|sc(?:\.exe)?\s+(?:stop|delete|config|start|create)|net\s+stop)\b/i
 const RE_REG = /\breg\s+(?:add|delete|import|load|restore)\b/i
+const RE_REGEDIT = /\bregedit(?:\.exe)?\s+\/s\b/i
 const RE_ITEMPROPERTY = /\b(?:set|new)-itemproperty[^\n]*(?:hklm|hkcu|hkey_)/i
-const RE_SCHTASKS = /\bschtasks\s+\/create\b/i
+const RE_SCHTASKS = /\bschtasks\s+\/(?:create|change|delete|run|end)\b/i
 
 function writeFinding(call: ToolTrace, config: DoubtConfig): LiveMutationFinding | undefined {
   if (!WRITE_TOOLS.has(call.name)) return undefined
@@ -183,12 +216,22 @@ function pathTokens(text: string): string[] {
 function writeDestination(command: string): string | undefined {
   const redirect = /(?:^|[\s|;)])(?:>{1,2})\s*([^\s>&]+)/.exec(command)
   if (redirect) return redirect[1]
-  const copy = /\b(copy-item|move-item|cp|mv|xcopy|robocopy)\b/i.exec(command)
+  const archive = /\b(?:expand-archive|compress-archive)\b[^\n]*?-(?:destinationpath|destination)\s+["']?([^"'\s;|]+)/i.exec(command)
+  if (archive) return archive[1]
+  const tar = /\btar\b[^\n]*?(?:\s-C\s+|\s--directory(?:=|\s+))["']?([^"'\s;|]+)/i.exec(command)
+  if (tar) return tar[1]
+  const unzip = /\b(?:unzip|7z)\b[^\n]*?(?:\s-d\s+|\s-o)["']?([^"'\s;|]+)/i.exec(command)
+  if (unzip) return unzip[1]
+  const download = /\b(?:invoke-webrequest|iwr|curl|wget|start-bitstransfer)\b[^\n]*?(?:-outfile|--output|-o)\s+["']?([^"'\s;|]+)/i.exec(command)
+  if (download) return download[1]
+  const dd = /\bdd\b[^\n]*?\bof=([^\s;|]+)/i.exec(command)
+  if (dd) return dd[1]
+  const copy = /\b(copy-item|move-item|cp|mv|copy|move|ren|xcopy|robocopy|rsync)\b/i.exec(command)
   if (copy) {
     const tokens = pathTokens(command.slice(copy.index + copy[0].length))
     return tokens[tokens.length - 1]
   }
-  const content = /\b(set-content|out-file|add-content|new-item|tee)\b/i.exec(command)
+  const content = /\b(set-content|out-file|add-content|new-item|tee|set-itemproperty|new-itemproperty)\b/i.exec(command)
   if (content) {
     const pathFlag = /-(?:path|literalpath|filepath|destination)\s+["']?([^"'\s;|]+)/i.exec(command)
     if (pathFlag) return pathFlag[1]
@@ -196,6 +239,24 @@ function writeDestination(command: string): string | undefined {
     return tokens[tokens.length - 1]
   }
   return undefined
+}
+
+/** Destination arguments of Node `fs` write APIs. Unknown expressions stay conservative. */
+function jsWriteTargets(command: string): { kind: 'write' | 'delete'; target?: string }[] {
+  const out: { kind: 'write' | 'delete'; target?: string }[] = []
+  const unquote = (raw: string): string | undefined => {
+    const m = /^\s*["'](.+)["']\s*$/.exec(raw)
+    return m ? m[1] : undefined
+  }
+  const addMatches = (re: RegExp, kind: 'write' | 'delete', offset: number) => {
+    for (const match of command.matchAll(re)) out.push({ kind, target: unquote(match[offset] ?? '') })
+  }
+  addMatches(/\b(?:writeFileSync|writeFile|appendFileSync|appendFile|createWriteStream|mkdirSync)\s*\(\s*([^,)]+)/g, 'write', 1)
+  addMatches(/\b(?:copyFileSync|cpSync)\s*\(\s*[^,)]+\s*,\s*([^,)]+)/g, 'write', 1)
+  addMatches(/\brenameSync\s*\(\s*([^,)]+)\s*,\s*([^,)]+)/g, 'write', 1)
+  addMatches(/\brenameSync\s*\(\s*[^,)]+\s*,\s*([^,)]+)/g, 'write', 1)
+  addMatches(/\b(?:rmSync|rmdirSync|unlinkSync)\s*\(\s*([^,)]+)/g, 'delete', 1)
+  return out
 }
 
 function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFinding[] {
@@ -206,35 +267,51 @@ function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFindin
     out.push({ callId: call.id, name: call.name, kind, target: clip(target), rule })
   }
   for (const command of commandTexts(call.args)) {
-    const context = `${command} ${workdir}`
-    const live = isLivePath(context, config)
-    const mutationText = stripOperators(command)
-    const installer = RE_INSTALL.exec(command)
-    if (installer && live) add('install', 'install-into-live-profile', installer[0])
+    for (const variant of [command, ...expandWrappedCommands(command)]) {
+      const context = `${variant} ${workdir}`
+      const live = isLivePath(context, config)
+      const mutationText = stripOperators(variant)
+      const installer = RE_INSTALL.exec(variant)
+      if (installer && live) add('install', 'install-into-live-profile', installer[0])
 
-    if (RE_INSTALL_LOCAL_TRIGGER.test(command)) {
-      add('write', 'install-local-script', RE_INSTALL_LOCAL_NAME.exec(command)?.[0] ?? 'install-local')
-    }
-    if (RE_RECURSIVE_DELETE.test(command)) {
-      const targets = deleteTargets(command)
-      // No visible target (e.g. `Remove-Item -Recurse $var`) stays conservative → flagged.
-      const dangerous = targets.length === 0 ? true : targets.some((target) => dangerousDeleteTarget(target, workdir, config))
-      if (dangerous) add('delete', 'recursive-delete', command)
-    }
-    if (live && RE_MUTATION_VERB.test(mutationText)) {
-      if (RE_DELETE_VERB.test(mutationText)) {
-        add('delete', 'live-path-shell-mutation', command)
-      } else {
-        const destination = writeDestination(command)
-        // Unknown destination keeps the conservative behavior; a live path used only as
-        // a copy source (e.g. backing up the live plugin directory) is read-only.
-        if (destination === undefined || isLivePath(destination, config)) add('write', 'live-path-shell-mutation', command)
+      if (RE_INSTALL_LOCAL_TRIGGER.test(variant)) {
+        add('write', 'install-local-script', RE_INSTALL_LOCAL_NAME.exec(variant)?.[0] ?? 'install-local')
       }
+      if (RE_RECURSIVE_DELETE.test(variant)) {
+        const targets = deleteTargets(variant)
+        // No visible target (e.g. `Remove-Item -Recurse $var`) stays conservative → flagged.
+        const dangerous = targets.length === 0 ? true : targets.some((target) => dangerousDeleteTarget(target, workdir, config))
+        if (dangerous) add('delete', 'recursive-delete', variant)
+      }
+      if (live && RE_MUTATION_VERB.test(mutationText)) {
+        if (RE_DELETE_VERB.test(mutationText)) {
+          add('delete', 'live-path-shell-mutation', variant)
+        } else if (RE_MOVE_VERB.test(mutationText)) {
+          // Moving/renaming a live path mutates it even when the destination is elsewhere.
+          add('write', 'live-path-shell-mutation', variant)
+        } else {
+          const destination = writeDestination(variant)
+          // Unknown destination keeps the conservative behavior; a live path used only as
+          // a copy source (e.g. backing up the live plugin directory) is read-only.
+          if (destination === undefined || isLivePath(destination, config)) add('write', 'live-path-shell-mutation', variant)
+        }
+      }
+      if (live && RE_GIT_WRITE.test(mutationText)) {
+        add(RE_GIT_DELETE.test(mutationText) ? 'delete' : 'write', 'live-path-shell-mutation', variant)
+      }
+      if (live && RE_ACL_WRITE.test(mutationText)) add('write', 'live-path-shell-mutation', variant)
+      if (live && RE_JS_WRITE.test(mutationText)) {
+        const targets = jsWriteTargets(mutationText)
+        const dangerous = targets.length === 0
+          ? true
+          : targets.some((t) => t.target === undefined || isLivePath(t.target, config))
+        if (dangerous) add(targets.some((t) => t.kind === 'delete' && (t.target === undefined || isLivePath(t.target, config))) ? 'delete' : 'write', 'live-path-shell-mutation', variant)
+      }
+      if (RE_PROCESS.test(mutationText)) add('process', 'process-control', variant)
+      if (RE_REG.test(mutationText) || RE_REGEDIT.test(mutationText)) add('registry', 'registry-or-service', variant)
+      else if (RE_ITEMPROPERTY.test(mutationText)) add('registry', 'registry-or-service', variant)
+      if (RE_SCHTASKS.test(mutationText)) add('service', 'registry-or-service', variant)
     }
-    if (RE_PROCESS.test(command)) add('process', 'process-control', command)
-    if (RE_REG.test(command)) add('registry', 'registry-or-service', command)
-    else if (RE_ITEMPROPERTY.test(command)) add('registry', 'registry-or-service', command)
-    if (RE_SCHTASKS.test(command)) add('service', 'registry-or-service', command)
   }
   return out
 }

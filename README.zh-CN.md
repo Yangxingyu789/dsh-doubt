@@ -3,7 +3,7 @@
 [![CI](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml/badge.svg)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt 图标" width="96">
 
@@ -23,6 +23,18 @@
 - **live 变更守卫**：已执行的 live 变更必须披露备份位置、可直接执行的回滚命令和动作后健康检查。
 
 它做的是证据核对，不保证回答一定正确。
+
+### Token 开销与循环保护
+
+`doubt_review` 是插件内部回执，注册在宿主中执行，但从模型工具列表中隐藏。
+模型不应手动调用或猜测 `reviewId`。旧会话仍可能诱发误调用：混合调用中的正常工具
+照常执行；仅有误调用时停止该循环并如实说明尚未完成验证，避免反复消耗整段上下文。
+正常的“审核提出缺口 → 补查 → 再审核”流程保留。
+
+审核缺少材料时不会通过删除更多证据重审；不支持的 reasoning 参数在同一次分段审核及
+格式重试中只探测一次。每次审核在插件日志中记录 `审核用量`，包括输入/输出字符数、
+耗时和模型返回的 token/缓存计数；未返回 usage 表示未知，不能当作零或用字符数替代。
+这些日志不记录提示词、工具原文或凭据。默认取证范围、补查轮数、验收条件保持不变。详见 [检查记录](docs/token-audit-2026-10-21.md)。
 
 ## 要求
 
@@ -60,7 +72,7 @@ npm run doctor         # 检查已安装的 DSH 插件（如存在）
 ```bash
 npm run check          # tsc --noEmit
 npm run build          # 编译到 lib/
-npm test               # 11 个单元测试文件
+npm test               # 12 个单元测试文件
 npm run smoke          # 在裸 Cordis 应用里加载插件
 npm run audit          # 仓库一致性自检
 npm run verify         # 完整验证链（含宿主测试）
@@ -76,7 +88,7 @@ npm run verify         # 完整验证链（含宿主测试）
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。更新日志：[CHANGELOG.md](CHANGELOG.md)。
-## 逐步骤溯源表（0.1.0）
+## 逐步骤溯源表（0.1.0 发布时快照；当前版本 0.1.1 见 CHANGELOG）
 
 以下条目在写入本表前核对（本地文件、`git ls-remote`、命令输出）。未抓取任何外部链接，因此徽章可达性明确标注为未验证。
 

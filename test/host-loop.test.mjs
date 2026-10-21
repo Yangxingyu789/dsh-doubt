@@ -16,7 +16,8 @@ const live = process.argv.includes('--live')
 const reviewerError = process.argv.includes('--reviewer-error')
 const history = process.argv.includes('--history')
 const exhausted = process.argv.includes('--exhausted')
-if ([live, reviewerError, history, exhausted].filter(Boolean).length > 1) throw Error('Choose only one scenario flag')
+const receiptMisuse = process.argv.includes('--receipt-misuse')
+if ([live, reviewerError, history, exhausted, receiptMisuse].filter(Boolean).length > 1) throw Error('Choose only one scenario flag')
 if (!app) {
   console.log(`SKIP host-loop.test: no installed DSH app found (${HOST_HINT})`)
   process.exit(0)
@@ -50,7 +51,7 @@ writeFileSync(file, '{"port":9000}')
 const ctx = new Context(), errors = [], frames = []
 let legacyProbes = 0, factoredStarts = 0
 const originalProbe = NetProbe.prototype.state
-if (exhausted) {
+if (exhausted || receiptMisuse) {
   NetProbe.prototype.state = async function () { legacyProbes++; return { online: false, probedAt: Date.now(), latencyMs: 0 } }
   ctx.provide('subagents', { async start() { factoredStarts++; return { result: Promise.resolve({ output: [{ type: 'text', text: 'unverified' }] }), async dispose() {} } } })
 }
@@ -63,7 +64,7 @@ let tools, loop
 ctx.inject(['systemPrompt'], (c) => { tools = new ToolRuntime(c) })
 ctx.plugin(AgentLoop, { agents: [], maxParallelToolCalls: 1 })
 ctx.inject(['agentLoop'], (c) => { loop = c.agentLoop })
-apply(ctx, { factored: exhausted, requireProvenance: false, maxRounds: exhausted ? 2 : 0, minAnswerChars: 1, minScore: 0, operationMaxRounds: 2, reviewNotice: 'banner' })
+apply(ctx, { factored: exhausted || receiptMisuse, requireProvenance: false, maxRounds: exhausted || receiptMisuse ? 2 : 0, minAnswerChars: 1, minScore: 0, operationMaxRounds: 2, reviewNotice: 'banner' })
 await new Promise((r) => setTimeout(r, 20))
 assert.ok(loop); assert.ok(tools)
 for (const name of ['fixture_write', 'fixture_read']) tools.register({ name,
@@ -75,7 +76,7 @@ for (const name of ['fixture_write', 'fixture_read']) tools.register({ name,
 function* thinkingChunks() { yield { type: 'block-start', index: 0, blockType: 'reasoning' }; yield { type: 'reasoning-delta', index: 0, text: 'Synthetic fault-injection fixture.' }; yield { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'Synthetic fault-injection fixture.' } } }
 function* textChunks(text, reasoning = false) { if (reasoning) yield* thinkingChunks(); const index = reasoning ? 1 : 0; yield { type: 'block-start', index, blockType: 'text' }; yield { type: 'text-delta', index, text }; yield { type: 'block-end', index, block: { type: 'text', text } }; yield { type: 'finish', reason: { kind: 'stop' } } }
 const premature = '重要：系统记录显示电脑其实没有重启过。'
-function* callChunks(id, name) {
+function* callChunks(id, name, extraName) {
   yield* thinkingChunks()
   yield { type: 'block-start', index: 1, blockType: 'text' }
   yield { type: 'text-delta', index: 1, text: premature }
@@ -84,7 +85,12 @@ function* callChunks(id, name) {
   yield { type: 'block-start', index, blockType: 'tool-call' }
   yield { type: 'tool-call-delta', index, id, name, argumentsDelta: '{}' }
   yield { type: 'block-end', index, block }
-  yield { type: 'finish', reason: { kind: 'tool-calls' }, replayState: { response: { kind: 'deepseek-messages', version: 1, model: live ? model : 'fixture-model' }, blocks: [{ type: 'reasoning' }, { type: 'text' }, { type: 'tool-call' }] } }
+  if (extraName) {
+    const extra = { type: 'tool-call', id: 'mixed-read', name: extraName, arguments: '{}' }
+    yield { type: 'block-start', index: 3, blockType: 'tool-call' }
+    yield { type: 'block-end', index: 3, block: extra }
+  }
+  yield { type: 'finish', reason: { kind: 'tool-calls' }, replayState: { response: { kind: 'deepseek-messages', version: 1, model: live ? model : 'fixture-model' }, blocks: [{ type: 'reasoning' }, { type: 'text' }, { type: 'tool-call' }, ...(extraName ? [{ type: 'tool-call' }] : [])] } }
 }
 let authorCalls = 0, reviews = 0
 const bad = '配置已修复，全部验证通过。', good = 'port 已写为 8080，写入后回读确认值为 8080。'
@@ -92,8 +98,14 @@ const historical = '上一轮写入后的回读记录显示 port 为 8080。'
 class Fixture extends LlmAdapter {
   async *stream(request) {
     if (request.sessionId) {
+      assert.ok(!request.tools?.some((t) => t.name === 'doubt_review'), 'internal receipt must not be advertised on the real model wire')
       const phase = authorCalls++
       if (phase === 0) { yield* callChunks('edit', 'fixture_write'); return }
+      if (receiptMisuse) {
+        assert.ok(phase <= 2, 'invented receipt must not spin the real AgentLoop')
+        yield* callChunks(`invented-${phase}`, 'doubt_review', phase === 1 ? 'fixture_read' : undefined)
+        return
+      }
       if (history) {
         if (phase === 1) { yield* callChunks('check', 'fixture_read'); return }
         if (phase === 2) { yield* textChunks(good); return }
@@ -165,7 +177,7 @@ try {
     await agent.whenIdle()
     agent.session.deriveMessages = deriveMessages
   }
-  if (exhausted) await new Promise((r) => setTimeout(r, 350)) // Legacy idle callback is scheduled after 150 ms.
+  if (exhausted || receiptMisuse) await new Promise((r) => setTimeout(r, 350)) // Legacy idle callback is scheduled after 150 ms.
   if (live) { mkdirSync('eval/out', { recursive: true }); writeFileSync('eval/out/loop-live.json', JSON.stringify({ model, authorCalls, reviews, errors, events: agent.session.snapshotEvents() }, null, 2)) }
   assert.deepEqual(errors, [])
   const events = agent.session.snapshotEvents()
@@ -177,7 +189,17 @@ try {
   assert.ok(frames.length > 0, 'actual UI stream frames were observed')
   assert.ok(!JSON.stringify(frames).includes(premature), 'tool-stage diagnosis must not reach UI stream')
   const final = messages.at(-1).content.filter((c) => c.type === 'text').map((c) => c.text).join('')
-  if (reviewerError) {
+  if (receiptMisuse) {
+    assert.match(final, /模型误调用了内部审核回执/)
+    assert.match(final, /尚未完成验证/)
+    assert.equal(authorCalls, 3)
+    assert.equal(reviews, 0)
+    assert.deepEqual(events.filter((e) => e.type === 'tool/call').map((e) => e.data.name), ['fixture_write', 'fixture_read'])
+    assert.equal(legacyProbes, 0)
+    assert.equal(factoredStarts, 0)
+    assert.equal(followups, 1)
+    console.log('host-loop.test PASS: receipt hidden from model; mixed read executed; pure invented receipt stopped once without extra review, probe or followup')
+  } else if (reviewerError) {
     assert.match(final, /审核服务未完成（SERVER）/)
     assert.ok(final.includes(historical || bad) || final.length > 20, 'reviewer failure releases the draft with a banner')
     assert.equal(authorCalls, 2); assert.equal(reviews, 1)

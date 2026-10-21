@@ -3,7 +3,7 @@
 [![CI](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml/badge.svg)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.0-blue)
+![Version](https://img.shields.io/badge/version-0.1.1-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt icon" width="96">
 
@@ -29,6 +29,16 @@ model cannot pass off an unverified claim as a completed task.
   an executable rollback command, and a post-action health check.
 
 The review is an evidence check, not a correctness guarantee.
+
+### Token usage and loop protection
+
+Internal `doubt_review` receipts are hidden from the model's tool list while
+remaining executable by the host. Stale model-authored receipt calls cannot spin
+the agent indefinitely: other tools in a mixed response still run; a receipt-only
+response stops with an explicit incomplete-verification notice. Normal automatic
+evidence recovery remains available. Review-attempt logs include provider-reported
+token counters when available; missing usage is unknown, not zero. See the
+[token audit](docs/token-audit-2026-10-21.md) for scope and verification details.
 
 ## Requirements
 
@@ -68,7 +78,7 @@ All options live under the plugin's `config:` block (see [cordis.patch.yml](cord
 ```bash
 npm run check          # tsc --noEmit
 npm run build          # compile to lib/
-npm test               # 11 unit test files
+npm test               # 12 unit test files
 npm run smoke          # load the plugin in a bare Cordis app
 npm run audit          # repository consistency checks
 npm run verify         # full chain, including host tests
@@ -86,7 +96,7 @@ npm run verify         # full chain, including host tests
 ## License
 
 MIT — see [LICENSE](LICENSE). Changelog: [CHANGELOG.md](CHANGELOG.md).
-## 逐步骤溯源表（0.1.0）
+## 逐步骤溯源表（0.1.0 发布时快照；当前版本 0.1.1 见 CHANGELOG）
 
 Checked before this section was written (local files, `git ls-remote`, command output). No external URL was fetched, so badge reachability is explicitly left unverified.
 

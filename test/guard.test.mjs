@@ -102,6 +102,53 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ 写入方向：live→备份放行；仓库/临时→live 拦截；重定向同方向判定')
 }
 {
+  const encoded = Buffer.from(`Set-Content -Path '${LIVE_PROFILE}\\x.yml' -Value x`, 'utf16le').toString('base64')
+  const blocked = [
+    [`cmd /c copy C:\\Temp\\x.txt "${LIVE_PLUGIN_INDEX}"`, 'cmd /c copy into live'],
+    [`cmd /c move C:\\Temp\\x.txt "${LIVE_PLUGIN_INDEX}"`, 'cmd /c move into live'],
+    [`cmd /c del /s /q "${LIVE_PROFILE}\\*"`, 'cmd /c recursive delete live'],
+    [`powershell -EncodedCommand ${encoded}`, 'encoded powershell write live'],
+    [`Expand-Archive -Path C:\\Temp\\a.zip -DestinationPath "${LIVE_PROFILE}" -Force`, 'Expand-Archive into live'],
+    [`tar -xf C:\\Temp\\a.tar -C "${LIVE_PROFILE}"`, 'tar extract into live'],
+    [`robocopy C:\\Temp "${LIVE_PROFILE}" /E`, 'robocopy into live'],
+    [`git -C "${LIVE_PROFILE}" checkout -- .`, 'git checkout live'],
+    [`git clean -fdx "${LIVE_PROFILE}"`, 'git clean live'],
+    [`icacls "${LIVE_PROFILE}" /grant Everyone:F`, 'icacls live'],
+    [`takeown /f "${LIVE_PROFILE}" /r`, 'takeown live'],
+    [`Set-ItemProperty -Path "${LIVE_PROFILE}\\x.yml" -Name a -Value b`, 'Set-ItemProperty live file'],
+    [`Rename-Item "${LIVE_PROFILE}\\x" y`, 'Rename-Item live'],
+    ['sc.exe stop TrustedInstaller', 'sc.exe stop'],
+    ['regedit /s C:\\Temp\\x.reg', 'regedit import'],
+    [`node -e "require('fs').writeFileSync(process.env.USERPROFILE+'.dsh\\\\plugins\\\\x','y')"`, 'node write via env path'],
+    [`node -e "require('fs').writeFileSync('${LIVE_PLUGIN_INDEX}','x')"`, 'node write literal live path'],
+    [`node -e "require('fs').copyFileSync('C:\\\\Temp\\\\x','${LIVE_PLUGIN_INDEX}')"`, 'node copyFileSync into live'],
+    [`cmd /c move "${LIVE_PLUGIN_INDEX}" C:\\Temp\\backup.js`, 'cmd move live OUT is still a mutation'],
+    [`Invoke-WebRequest -Uri http://127.0.0.1/x -OutFile "${LIVE_PROFILE}\\x.yml"`, 'Invoke-WebRequest into live'],
+    [`curl.exe -o "${LIVE_PROFILE}\\x.yml" http://127.0.0.1/x`, 'curl output into live'],
+    [`7z x C:\\Temp\\a.zip -o"${LIVE_PROFILE}"`, '7z extract into live'],
+    [`rsync -a C:\\Temp\\ "${LIVE_PROFILE}\\"`, 'rsync into live'],
+    [`dd if=C:\\Temp\\x of="${LIVE_PROFILE}\\x.yml"`, 'dd output into live'],
+  ]
+  for (const [command, label] of blocked) {
+    const found = detectLiveMutations([call('adv', 'pwsh', { command }), result('adv', 'done')], turn, cfg)
+    assert.ok(found.length > 0, `${label} must be flagged: ${command} → ${JSON.stringify(found.map((f) => f.rule))}`)
+  }
+  const allowed = [
+    [`cmd /c copy "${LIVE_PLUGIN_INDEX}" C:\\Temp\\backup.js`, 'cmd copy live OUT is read-only'],
+    [`robocopy "${LIVE_PROFILE}" C:\\Temp\\backup /E`, 'robocopy live OUT is read-only'],
+    [`rsync -a "${LIVE_PROFILE}\\" C:\\Temp\\backup\\`, 'rsync live OUT is read-only'],
+    [`curl.exe -o C:\\Temp\\x.yml http://127.0.0.1/x`, 'curl output to temp is allowed'],
+    [`git -C "${LIVE_PROFILE}" status`, 'git status is read-only'],
+    ['node -e "require(\'fs\').readFileSync(' + JSON.stringify(LIVE_PLUGIN_INDEX) + ')"', 'node read live is read-only'],
+    [`node -e "require('fs').writeFileSync('C:\\\\Temp\\\\y', require('fs').readFileSync('${LIVE_PLUGIN_INDEX}'))"`, 'node backup live OUT to temp is read-only'],
+  ]
+  for (const [command, label] of allowed) {
+    const found = detectLiveMutations([call('adv', 'pwsh', { command }), result('adv', 'done')], turn, cfg)
+    assert.equal(found.length, 0, `${label} must stay allowed: ${command} → ${JSON.stringify(found.map((f) => f.rule))}`)
+  }
+  console.log('  ✓ 执行前闸门绕过：cmd/编码/解压/tar/robocopy/git/ACL/属性/服务/regedit/JS 写入均拦截；live 读出仍放行')
+}
+{
   const events = [call('e', 'pwsh', { command: 'Stop-Process -Name "DeepSeek Harness"' }), result('e', 'done')]
   assert.deepEqual(rulesOf(events), ['process-control'])
   console.log('  ✓ pwsh Stop-Process → process-control')

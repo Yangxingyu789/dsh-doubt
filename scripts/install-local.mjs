@@ -32,7 +32,7 @@ if (!dry) {
   }
 }
 
-const COPY = ['lib', 'cordis.patch.yml', 'dsh-plugin.json', 'package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'CHANGELOG.md']
+const COPY = ['lib', 'cordis.patch.yml', 'dsh-plugin.json', 'package.json', 'README.md', 'README.zh-CN.md', 'LICENSE', 'CHANGELOG.md', 'docs']
 const todo = COPY.filter((f) => existsSync(join(root, f)))
 
 console.log(`插件      : ${name}@${pkg.version}`)
