@@ -405,7 +405,7 @@
 |---|---|---|---|---|
 | 1 | 当前 live 安装版 | `0.8.2` | 本轮读取 `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.2` | 有出处 |
 | 2 | 仓库版本 | `0.8.3` | `C:\work\dsh-doubt\package.json` → `0.8.3`；`dsh-plugin.json` → `0.8.3`；`npm run audit` → `版本一致：0.8.3` | 有出处 |
-| 3 | 历史提及 `0.8.1` / `0.8.2` | 当时 live 确为这些版本 | CHANGELOG 0.8.1/0.8.2 条目与交接文档；当时宿主状态现在无法重新观测 | 无依据（历史记录，本轮未复核） |
+| 3 | 历史提及 `0.8.1` / `0.8.2` | 当时 live 确为这些版本 | CHANGELOG 0.8.1/0.8.2 条目与本地开发记录（未入库）；当时宿主状态现在无法重新观测 | 无依据（历史记录，本轮未复核） |
 | 4 | `scanAnswer(draft)` | 符号存在 | `src/scanner.ts:240` → `export function scanAnswer(text: string, options: ScanOptions = {}): ScanResult {` | 有出处 |
 | 5 | `hasMaterialClaim(draft)` | 符号存在 | `src/completion.ts:26` → `export function hasMaterialClaim(text: string): boolean {` | 有出处 |
 | 6 | `hasMaterialClaims`（复数） | 不存在，文档只用单数 | `src/**`、`test/**` 中 `Select-String hasMaterialClaims` → 0 命中（本轮；文档提到它只是为了记录“不存在”） | 有出处（否定核对） |

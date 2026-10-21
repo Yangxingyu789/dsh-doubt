@@ -40,8 +40,7 @@ npm run doctor         # 检查已安装的 DSH 插件（如存在）
 ```
 
 装进 live DSH profile 请使用离线安装脚本：构建、备份当前插件、复制 `lib/`、执行
-`pnpm install --offline` 并校验文件哈希。见 [scripts/install-local.mjs](scripts/install-local.mjs)
-与 [交接文档.md](交接文档.md)。
+`pnpm install --offline` 并校验文件哈希。见 [scripts/install-local.mjs](scripts/install-local.mjs)。
 
 ## 配置（节选）
 

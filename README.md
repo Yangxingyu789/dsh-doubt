@@ -47,8 +47,8 @@ npm run doctor         # check the installed DSH plugin, if present
 
 To install into a live DSH profile, use the offline installer script; it builds,
 backs up the current plugin, copies `lib/`, runs `pnpm install --offline`, and verifies
-file hashes. See [scripts/install-local.mjs](scripts/install-local.mjs) and
-[交接文档.md](交接文档.md) for the Windows offline flow.
+file hashes. See [scripts/install-local.mjs](scripts/install-local.mjs) for the Windows
+offline flow.
 
 ## Configuration (excerpt)
 
