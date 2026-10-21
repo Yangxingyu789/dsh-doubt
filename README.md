@@ -102,3 +102,17 @@ Checked before this section was written (local files, `git ls-remote`, command o
 | 8 | Live install | Installed plugin is still 0.8.4 (0.1.0 not installed) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | sourced |
 | 9 | Badge reachability | CI/License/Node/Version badges render on GitHub | No HTTP fetch was performed; shields.io and GitHub Actions badge URLs are conventional | unsourced (not verified) |
 | 10 | Compatibility statement | "0.1.0 is the first public release; interfaces may change" | Planning statement, no measured artifact | unsourced |
+## 逐步骤溯源表（仓库清理与文档修订，2026-10-21）
+
+Checked before this section was written. Local-only paths are named only where the fact itself is about them. No HTTP fetch was performed.
+
+| # | Item | Claim | Evidence | Class |
+|---|---|---|---|---|
+| 1 | Documentation files | README.md, README.zh-CN.md and CHANGELOG.md exist at the repository root | `Test-Path` → True; `git ls-files` lists all three | sourced |
+| 2 | package.json fields | `main` is `lib/index.js`; `files` includes `assets/icon*.png` | `package.json` read; `main=lib/index.js`; `assets/` contains 4 files | sourced |
+| 3 | Local exclude file | `.git/info/exclude` contains a local-only ignore entry for the internal handoff document | file exists; `Select-String` → 1 match | sourced (local file) |
+| 4 | Internal doc removed from tree | The internal handoff document is no longer in the HEAD tree | `git ls-tree -r HEAD --name-only` filtered for it → 0 | sourced |
+| 5 | Local copy retained | The handoff document still exists in the working directory for local use | `Test-Path` → True | sourced |
+| 6 | Local plugin path | `C:\Users\Example\.dsh\plugins\dsh-doubt` exists (path used in the 0.1.0 table) | `Test-Path` → True | sourced |
+| 7 | History purge | Removing the file from past commits needs `git filter-repo` / `filter-branch` plus a force push | Not installed and not run; recommendation based on Git behavior, no command output | unsourced |
+| 8 | Push state | Local commit `151ba29` exists; its remote push succeeded | Local: `git rev-parse` → `151ba29`; remote: last `git ls-remote` failed with a connection error, so the remote ref is unverified | mixed: local sourced, remote unsourced (unverified) |

@@ -92,3 +92,17 @@ MIT，见 [LICENSE](LICENSE)。更新日志：[CHANGELOG.md](CHANGELOG.md)。
 | 8 | live 安装 | 已安装插件仍是 0.8.4（0.1.0 未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | 有出处 |
 | 9 | 徽章可达性 | CI/License/Node/Version 徽章在 GitHub 正常显示 | 未抓取 URL；shields.io 与 GitHub Actions 徽章地址为常规用法 | 无依据（未验证） |
 | 10 | 兼容性表述 | “0.1.0 是首个公开版本，接口可能变化” | 规划性表述，无实测产物 | 无依据 |
+## 逐步骤溯源表（仓库清理与文档修订，2026-10-21）
+
+以下条目在写入本表前核对。仅在事实本身就是“本机路径”时才写出该路径；未抓取任何外部链接。
+
+| # | 条目 | 断言 | 依据 | 类别 |
+|---|---|---|---|---|
+| 1 | 文档文件 | 仓库根目录存在 README.md、README.zh-CN.md、CHANGELOG.md | `Test-Path` → True；`git ls-files` 三个文件都在 | 有出处 |
+| 2 | package.json 字段 | `main` 为 `lib/index.js`；`files` 含 `assets/icon*.png` | 读取 `package.json`；`main=lib/index.js`；`assets/` 有 4 个文件 | 有出处 |
+| 3 | 本机排除文件 | `.git/info/exclude` 含内部交接文档的本机忽略项 | 文件存在；`Select-String` → 1 命中 | 有出处（本机文件） |
+| 4 | 内部文档移出树 | HEAD 树中已无内部交接文档 | `git ls-tree -r HEAD --name-only` 过滤 → 0 | 有出处 |
+| 5 | 本地副本保留 | 工作区内仍保留交接文档供本机使用 | `Test-Path` → True | 有出处 |
+| 6 | 本机插件路径 | `C:\Users\Example\.dsh\plugins\dsh-doubt` 存在（0.1.0 表第 8 行使用） | `Test-Path` → True | 有出处 |
+| 7 | 历史清除 | 从历史提交清除该文件需要 `git filter-repo` / `filter-branch` + 强制推送 | 未安装、未执行；仅为基于 Git 行为的建议，无命令输出 | 无依据 |
+| 8 | 推送状态 | 本地提交 `151ba29` 存在；其远端推送成功 | 本地 `git rev-parse` → `151ba29`；远端最后一次 `git ls-remote` 因连接错误失败，远端引用未复核 | 混合：本地有出处，远端无依据（未验证） |
