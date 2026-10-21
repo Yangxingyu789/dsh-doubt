@@ -98,7 +98,7 @@ Checked before this section was written (local files, `git ls-remote`, command o
 | 4 | Comment cleanup method | TS AST/scanner helpers used | TypeScript 5.9.3; `node_modules/typescript/lib/typescript.d.ts:8505` (`getLeadingCommentRanges`), `:8521` (`getTextPos`), `:8523` (`getTokenPos`) | sourced |
 | 5 | Cleanup script | Not committed to the repository | `git ls-files scripts/strip-cn-comments.mjs` → 0; `Test-Path` → False | sourced (negative) |
 | 6 | CJK comments | No Chinese comment lines remain in src/test/scripts | `Select-String '^\s*(//|\*|/\*).*CJK'` → 0 lines | sourced |
-| 7 | Git refs | Remote main and tag point at the release commit | `git ls-remote origin refs/heads/main` → `e9061bf`; `v0.1.0^{}` → `e9061bf` | sourced |
+| 7 | Git refs | At check time remote main was `e9061bf` and tag `v0.1.0^{}` was `e9061bf` | `git ls-remote` output; the later docs commit `90e8dc4` advanced main | sourced |
 | 8 | Live install | Installed plugin is still 0.8.4 (0.1.0 not installed) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | sourced |
 | 9 | Badge reachability | CI/License/Node/Version badges render on GitHub | No HTTP fetch was performed; shields.io and GitHub Actions badge URLs are conventional | unsourced (not verified) |
 | 10 | Compatibility statement | "0.1.0 is the first public release; interfaces may change" | Planning statement, no measured artifact | unsourced |
