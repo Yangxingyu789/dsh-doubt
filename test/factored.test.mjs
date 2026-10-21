@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { factoredCheck, normalizeAnswer } from '../lib/factored.js'
 
-// ---- 归一化：把自然语言答案压成可投票的类别 ----
+
 assert.equal(normalizeAnswer('是的，存在'), 'affirmative')
 assert.equal(normalizeAnswer('Yes, it exists'), 'affirmative')
 assert.equal(normalizeAnswer('不存在这个路径'), 'negative')
@@ -9,25 +9,25 @@ assert.equal(normalizeAnswer('No, that is not correct'), 'negative')
 assert.equal(normalizeAnswer('实际版本是 v1.2.3'), '1.2.3')
 assert.equal(normalizeAnswer('路径是 C:\\a\\b.yaml'), 'c:\\a\\b.yaml')
 
-// ASCII 的 yes/no 必须带词边界。原来 `^(no|...)` 会命中 `Node`，
-// 于是 `Node.js v24.21.0 is the runtime` 被判否定；三个正确的回答会一致投 negative，
-// 直接反转 Tier C 的多数票。`know` 里的 `no` 同理。
+
+
+
 assert.equal(normalizeAnswer('Node.js v24.21.0 is the runtime'), '24.21.0', '"Node" 不得被当成 no')
 assert.equal(normalizeAnswer('node 24'), 'node 24', '"node" 不得被当成 no')
 assert.equal(normalizeAnswer('Yes, I know the version: 24.21.0'), 'affirmative', '"know" 不得被当成 no')
 assert.equal(normalizeAnswer('notably it exists'), 'affirmative', '"notably" 不得被当成 no')
 assert.equal(normalizeAnswer('know-how is present'), 'affirmative')
 assert.equal(normalizeAnswer('The file is not missing'), 'negative', '独立词 not 仍是否定')
-// 三个正确的相同回答必须投同一票（而不是一致投 negative）
+
 assert.equal(new Set([1, 2, 3].map(() => normalizeAnswer('Node.js v24.21.0 is the runtime'))).size, 1)
 assert.equal(normalizeAnswer('Node.js v24.21.0 is the runtime'), '24.21.0')
 
-// ---- 没有子代理能力时如实返回 unavailable，不假装验过 ----
+
 const none = await factoredCheck('包 X 是否存在？只回答 yes 或 no。', { provider: 'p', votes: 3, timeoutMs: 1000 }, null)
 assert.equal(none.available, false, '无宿主能力应 unavailable')
 assert.ok(none.reason, '应说明原因')
 
-// ---- 三次一致 → 多数成立 ----
+
 function fakeHost(answer, delay = 0) {
   return {
     subagents: {
@@ -52,7 +52,7 @@ assert.equal(agree.majority, 'affirmative', `3 票一致应得多数，实际 ${
 assert.equal(agree.agree, 3)
 assert.equal(agree.total, 3)
 
-// ---- 投票分裂 → majority=null，不硬给结论 ----
+
 let i = 0
 const splitHost = {
   subagents: {
@@ -67,7 +67,7 @@ const split = await factoredCheck('包 X 是否存在？', { provider: 'p', vote
 assert.equal(split.majority, null, '2:2 分裂不应给结论')
 assert.ok(split.reason?.includes('投票分裂'), `应说明分裂，实际 ${split.reason}`)
 
-// ---- 子代理报错 → available=false，不静默通过 ----
+
 const failHost = { subagents: { start: async () => { throw new Error('provider 未注册') } }, parent: { id: 'p' } }
 const failed = await factoredCheck('包 X 是否存在？', { provider: 'p', votes: 3, timeoutMs: 1000 }, failHost)
 assert.equal(failed.available, false, '调用失败应 unavailable')

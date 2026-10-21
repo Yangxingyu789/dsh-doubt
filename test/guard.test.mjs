@@ -1,4 +1,4 @@
-// 危险变更闸门：识别规则 / 三件产物判定 / 热改 live profile 事故回归 / 历史轮不污染 / 开关 / 不误伤
+
 import assert from 'node:assert/strict'
 import { assessLiveMutation, confirmationSeen, detectLiveMutations, healthChecked, rollbackDisclosed } from '../lib/guard.js'
 import { reviewDraft } from '../lib/completion.js'
@@ -26,9 +26,9 @@ const approvalEvent = (text) => ({ type: 'user/message', data: { role: 'user', s
 const msgs = [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '继续完善插件并验收。' }] }]
 const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f) => f.rule)
 
-// ── 1. 识别单测（§4.2 / §4.3）：每条规则一个正例 + 反例 ──────────────────────────
+
 {
-  // 本仓库安装脚本会写 .dsh/plugins → install-local-script（kind=write）
+
   const events = [call('a', 'pwsh', { command: 'node scripts/install-local.mjs' }), result('a', 'installed')]
   const findings = detectLiveMutations(events, turn, cfg)
   assert.deepEqual(findings.map((f) => f.rule), ['install-local-script'])
@@ -39,12 +39,12 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ pwsh node scripts/install-local.mjs → install-local-script')
 }
 {
-  // live profile 里 pnpm install → install-into-live-profile（kind=install）
+
   const events = [call('b', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: LIVE_PROFILE }), result('b', 'Done')]
   const findings = detectLiveMutations(events, turn, cfg)
   assert.deepEqual(findings.map((f) => f.rule), ['install-into-live-profile'])
   assert.equal(findings[0].kind, 'install')
-  // 非 live 工作目录的 pnpm install 不是宿主机变更（防误报）
+
   assert.deepEqual(rulesOf([call('b2', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: 'E:\\dsh-doubt' }), result('b2', 'Done')]), [])
   console.log('  ✓ pnpm.cmd install（workdir=live profile）→ install-into-live-profile；仓库目录不触发')
 }
@@ -66,7 +66,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ pwsh Remove-Item -Recurse（任意外部路径）→ recursive-delete')
 }
 {
-  // 执行前闸门启用后，常见项目/临时目录清理不应被拦：live/系统/盘根/未知目标才拦。
+
   const cases = [
     ['Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"', 'temp path must be allowed', false],
     ['Remove-Item -Recurse -Force $env:TEMP\\probe', '$env:TEMP must be allowed', false],
@@ -86,7 +86,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ 递归删除细化：temp/$env:TEMP/仓库 workdir 放行；系统目录/盘根/live 路径/未知目标拦截')
 }
 {
-  // 写入方向：从 live 路径复制出来（备份）是只读；复制/写入进 live 路径才是变更。
+
   const cases = [
     [`Copy-Item 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt' 'E:\\dsh-doubt\\_diag\\backup' -Recurse -Force`, false, 'copy OUT of live path (backup) must be allowed'],
     [`Copy-Item 'E:\\dsh-doubt\\lib' 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt\\lib' -Recurse -Force`, true, 'copy INTO live path must be flagged'],
@@ -112,7 +112,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ pwsh reg add HKCU\\... → registry-or-service')
 }
 {
-  // 反例：查询类命令、读 live 路径、仓库源码 edit、ops_replace dryRun 都不得命中
+
   const harmless = [
     call('r', 'read', { path: LIVE_PLUGIN_INDEX }), result('r', 'contents'),
     call('v', 'pwsh', { command: 'node --version' }), result('v', 'v24.21.0'),
@@ -120,7 +120,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
     call('o', 'ops_replace', { path: LIVE_PLUGIN_INDEX, dryRun: true }), result('o', 'dry-run ok'),
     call('q', 'pwsh', { command: 'pnpm --version' }), result('q', '12.10.1'),
     call('w', 'verify_claims', { checks: [{ kind: 'command', argv: ['node', '--version'] }] }), result('w', 'v24.21.0'),
-    // 只读 node -e：命令里出现 live 路径 + JS 箭头函数/比较运算符 + 2>&1，必须不判成 live 写入
+
     call('js', 'pwsh', { command: `node -e "const fs=require('node:fs');const a=[1,2].map(x=>x).filter(x=>x>=1);const p=fs.readFileSync('C:/Users/Administrator/.dsh/profiles/desktop/cordis.patch.yml','utf8');console.log(a.length,p.length)" 2>&1 | Out-String` }), result('js', '2 1962'),
   ]
   assert.deepEqual(rulesOf(harmless), [])
@@ -130,7 +130,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ 反例（read / node --version / 仓库 edit / ops_replace dryRun / verify_claims 只读）mutated === false')
 }
 {
-  // 没有 turn 字段的旧 fixture 视为当前轮；历史轮（turn < 当前）不在作用域
+
   const noTurn = [{ type: 'tool/call', data: { callId: 'x', name: 'pwsh', arguments: JSON.stringify({ command: 'node scripts/install-local.mjs' }) } }]
   assert.deepEqual(detectLiveMutations(noTurn, 3, cfg).map((f) => f.rule), ['install-local-script'])
   const historical = [call('old', 'pwsh', { command: 'node scripts/install-local.mjs' }, 1), result('old', 'installed', 1)]
@@ -138,7 +138,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   console.log('  ✓ 无 turn 记录按当前轮；turn < 当前轮不参与')
 }
 
-// ── 三件产物 helper 单测（§4.4）────────────────────────────────────────────────
+
 const incident = [
   call('install-local', 'pwsh', { command: 'node scripts/install-local.mjs' }),
   result('install-local', '.dsh\\plugins\\dsh-doubt 已写入'),
@@ -159,19 +159,19 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   assert.equal(confirmationSeen(withApproval, detectLiveMutations(withApproval, turn, cfg)), true, '批准事件在 mutation 之前')
   const approvalAfter = [...incident, approvalEvent('批准安装到 live profile。')]
   assert.equal(confirmationSeen(approvalAfter, findings), false, '批准事件在 mutation 之后不算')
-  // 草稿自述「已确认」不算：confirmationSeen 只看事件与真人请求，不看 draft
+
   assert.equal(confirmationSeen(incident, findings, [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '把插件装进 live profile 并验收。' }] }]), false)
 
   assert.equal(healthChecked(incident, turn, findings).ok, false, '变更后没有调用')
   const withHealth = [...incident, call('health', 'pwsh', { command: 'node --version' }), result('health', 'v24.21.0')]
   assert.deepEqual(healthChecked(withHealth, turn, detectLiveMutations(withHealth, turn, cfg)), { ok: true, callIds: ['health'] })
-  // 历史轮的事后调用不能当本轮健康检查
+
   const staleHealth = [...incident, call('health', 'pwsh', { command: 'node --version' }, 0), result('health', 'v24.21.0', 0)]
   assert.equal(healthChecked(staleHealth, turn, findings).ok, false, '历史轮调用不是当前轮的变更后检查')
   console.log('  ✓ rollbackDisclosed / confirmationSeen / healthChecked 细粒度判定符合 §4.4')
 }
 {
-  // 用户明确授权（最后一条真人请求同时含确认词与动作词）可作确认证据；draft 自述不算
+
   const findings = detectLiveMutations(incident, turn, cfg)
   const approvingMessages = [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: '确认安装这个插件' }] }]
   assert.equal(confirmationSeen(incident, findings, approvingMessages), true, '真人请求含确认词+动作词 → 视为授权')
@@ -183,8 +183,8 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   const selfClaim = assessLiveMutation({ events: incident, turn, draft: `已确认可以安装。\n${ROLLBACK_DRAFT}`, config: cfg, messages: neutralMessages })
   assert.equal(selfClaim.present.confirm, false, 'draft 里写「已确认」是自我声明，不算确认证据')
   assert.equal(selfClaim.satisfied, false)
-  // 用户对「是否安装」的直接回复（单独一句「确认」）也是明确授权，
-  // 旧规则要求同句含动作词，会把这种真实确认误判成缺失。
+
+
   for (const reply of ['确认', '确认。', '批准安装', 'OK', 'yes']) {
     const msgs = [{ role: 'user', source: { kind: 'user' }, content: [{ type: 'text', text: reply }] }]
     assert.equal(confirmationSeen(incident, findings, msgs), true, `单独确认「${reply}」应视为授权`)
@@ -192,7 +192,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 真人请求授权可作确认证据；单独「确认/OK/yes」也算；draft 自述「已确认」不算')
 }
 
-// ── 2. 事故回归（核心）：安装到 live profile → 宿主服务失效，本轮无任何后续调用 ──────
+
 {
   let calls = 0
   const out = await reviewDraft(incident, turn, msgs, '已把改造版插件装进 live profile，插件已生效。', {}, {
@@ -209,7 +209,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 事故回归：live profile 安装 + 声称完成 + 无回滚/确认/健康检查 → 打回（calls=0，failure=undefined）')
 }
 {
-  // 补了健康检查，仍缺回滚/确认 → 仍打回，只报这两个缺口
+
   let calls = 0
   const events = [...incident, call('health', 'pwsh', { command: 'node --version' }), result('health', 'v24.21.0')]
   const out = await reviewDraft(events, turn, msgs, '已把改造版插件装进 live profile，插件已生效。', {}, {
@@ -223,7 +223,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 补健康检查仍缺回滚/确认 → 打回，只报回滚 + 确认缺口')
 }
 {
-  // 三件产物齐全 → 放行确定性闸门，继续走模型审核（受控 reviewer 返回 approve）
+
   let calls = 0
   const events = [
     humanEvent('把改造版插件装进 live profile 并验收。'),
@@ -244,7 +244,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 回滚 + 确认 + 事后健康检查齐全 → 闸门放行，继续模型审核（calls=1，approved）')
 }
 {
-  // 有确认、有回滚、变更后无调用 → 仅健康检查缺失打回
+
   let calls = 0
   const events = [approvalEvent('批准安装到 live profile。'), ...incident]
   const out = await reviewDraft(events, turn, msgs, ROLLBACK_DRAFT, {}, {
@@ -258,7 +258,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 缺健康检查单独打回（有确认 + 有回滚）')
 }
 
-// ── 3. 关闭开关：guardLiveMutation=false 完全退回旧行为 ─────────────────────────
+
 {
   const off = normalizeConfig({ reviewMaxChars: 8000, factored: false, reviewTimeoutMs: 2000, guardLiveMutation: false })
   assert.equal(off.guardLiveMutation, false)
@@ -272,7 +272,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ guardLiveMutation=false：同一事故轨迹不被打回（calls=1）')
 }
 
-// ── 4. 不误伤 + 历史轮假阳性回归 ───────────────────────────────────────────────
+
 {
   let calls = 0
   const events = [
@@ -287,7 +287,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 普通轨迹（仓库 edit + read）不误伤（calls=1）')
 }
 {
-  // turn=1 发生过 live profile 安装；当前审的是 turn=5 的普通回答 → 不得被污染
+
   const events = [
     call('old-install', 'pwsh', { command: 'node scripts/install-local.mjs' }, 1), result('old-install', 'installed', 1),
     call('old-profile', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: LIVE_PROFILE }, 1), result('old-profile', 'Done', 1),
@@ -305,14 +305,14 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   console.log('  ✓ 历史轮（turn=1）live 安装不污染 turn=5 普通回答（mutated=false，calls=1）')
 }
 
-// ── 执行前闸门（tools/pre-execute）：危险操作在执行前 ask/deny ─────────────────
+
 {
   const { createPreflightGuard } = await import('../lib/preflight.js')
   const cfgOn = normalizeConfig({ guardPreExecute: true })
   const execOf = (name, args) => ({ name, arguments: args, callId: 'c1', agent: { session: { id: 's1' } } })
   const allow = async () => ({ kind: 'allow' })
 
-  // 有审批通道、策略 ask：危险操作返回 kind=ask（权限审批注入）
+
   let asked = 0
   const askGuard = createPreflightGuard(() => cfgOn, { approval: () => ({ overrideOf: () => 'ask' }) })
   const askDecision = await askGuard(execOf('pwsh', { command: 'node scripts/install-local.mjs' }), allow)
@@ -322,36 +322,36 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   asked++
   assert.equal(asked, 1)
 
-  // 策略 never：直接 deny（无法弹审批时也不放行）
+
   const denyGuard = createPreflightGuard(() => cfgOn, { approval: () => ({ overrideOf: () => 'never' }) })
   const denyDecision = await denyGuard(execOf('pwsh', { command: 'pnpm.cmd install --offline', workdir: LIVE_PROFILE }), allow)
   assert.equal(denyDecision.kind, 'deny', '策略 never 时应拒绝执行')
 
-  // 无审批通道：拒绝
+
   const noSeam = createPreflightGuard(() => cfgOn, { approval: () => undefined })
   assert.equal((await noSeam(execOf('edit', { file_path: LIVE_PLUGIN_INDEX }), allow)).kind, 'deny')
 
-  // 普通仓库操作 / 只读命令：放行（不干扰正常工作）
+
   for (const [name, args] of [
     ['edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }],
     ['read', { file_path: LIVE_PLUGIN_INDEX }],
     ['pwsh', { command: 'node --version' }],
-    // 临时目录递归删除与仓库内递归清理不属于 live 危险变更：执行前闸门应放行
+
     ['pwsh', { command: 'Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"' }],
     ['pwsh', { command: 'rm -rf node_modules', workdir: 'E:\\dsh-doubt' }],
   ]) {
     const decision = await askGuard(execOf(name, args), allow)
     assert.equal(decision.kind, 'allow', `${name} 普通操作应放行：${JSON.stringify(args)}`)
   }
-  // live 路径递归删除仍应 ask（有审批）或 deny（never）
+
   assert.equal((await askGuard(execOf('pwsh', { command: `Remove-Item -Recurse ${LIVE_PROFILE}` }), allow)).kind, 'ask')
   assert.equal((await noSeam(execOf('pwsh', { command: `Remove-Item -Recurse ${LIVE_PROFILE}` }), allow)).kind, 'deny')
 
-  // 关闭开关：完全退回原行为
+
   const offGuard = createPreflightGuard(() => normalizeConfig({ guardPreExecute: false }), { approval: () => ({ overrideOf: () => 'ask' }) })
   assert.equal((await offGuard(execOf('pwsh', { command: 'node scripts/install-local.mjs' }), allow)).kind, 'allow', '关闭后不介入')
 
-  // 下游已经 deny/ask：不覆盖
+
   const downstreamDeny = async () => ({ kind: 'deny', reason: 'other guard' })
   assert.deepEqual(await askGuard(execOf('pwsh', { command: 'node scripts/install-local.mjs' }), downstreamDeny), { kind: 'deny', reason: 'other guard' })
   console.log('  ✓ 执行前闸门：危险操作 ask（有审批）/ deny（never 或无通道）；普通操作放行；关闭开关回退')

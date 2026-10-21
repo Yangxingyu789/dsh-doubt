@@ -7,8 +7,8 @@ on:
 
 jobs:
   verify:
-    # 插件的主目标平台是 Windows（本机 oracle、argv 转义、PATHEXT、junction 都在那边），
-    # 所以两个平台都跑：ubuntu 保证可移植性没有被破坏，windows 才是真实使用环境。
+    # Windows is the primary target (local oracles, argv escaping, PATHEXT, junctions).
+    # Ubuntu is included to keep the code portable.
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +25,7 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # typecheck + build + 7 套测试 + smoke + 仓库自检 + 宿主测试 + 外部裁判。
-      # CI 里没有已安装的桌面应用，所以宿主测试与"解包宿主"那几项会如实 SKIP 并以 0 退出；
-      # 真正的回归会 FAIL 并让构建变红（旧版这里用 continue-on-error 把 FAIL 吞掉了）。
+      # Typecheck, build, unit tests, smoke, repository self-audit, host tests and
+      # host-loop regression. Host tests that need an installed desktop app SKIP
+      # honestly (exit 0) in CI; real regressions FAIL the build.
       - run: npm run verify

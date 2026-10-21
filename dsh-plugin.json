@@ -2,7 +2,7 @@
   "manifestVersion": "0.15",
   "id": "dsh-doubt",
   "name": "dsh-doubt",
-  "version": "0.8.4",
+  "version": "0.1.0",
   "license": "MIT",
   "facets": {
     "host": {
@@ -22,38 +22,38 @@
     {
       "name": "dsh-doubt.process.spawn",
       "scope": "subprocess",
-      "reason": "verify_claims 需要真实执行用户/模型提交的命令，才能给出实测证据。"
+      "reason": "verify_claims executes submitted checks locally to return measured evidence."
     },
     {
       "name": "dsh-doubt.fs.read",
       "scope": "filesystem-read",
-      "reason": "fileExists / fileMatch 检查与本机 oracle（node_modules、package.json、锁文件、符号定义）需要读取文件。"
+      "reason": "fileExists / fileMatch and local npm oracles (node_modules, package.json, lockfiles, symbol definitions) read files."
     },
     {
       "name": "dsh-doubt.net.fetch",
       "scope": "network",
-      "reason": "断言核验会向配置 registry 查询包名；最终审核会将真人请求、草稿及本轮工具参数/文本结果发给当前模型 provider，额外消耗模型用量。关闭 requireOperationEvidence 可停用最终审核。"
+      "reason": "Assertion checks may query a package registry; final-answer review sends the request, draft and tool evidence to the current model provider, which consumes extra model usage. Set requireOperationEvidence to false to disable the review."
     }
   ],
   "contributes": {
     "x-display": [
       {
         "title": "dsh-doubt",
-        "description": "最终正文显示前审核实际工具证据，缺少验收时自动补查；保留断言核验与文档溯源。"
+        "description": "Reviews actual tool evidence before a final answer is shown; retries with evidence when acceptance is missing, and reports incomplete work explicitly."
       }
     ],
     "x-prompt-sections": [
       {
         "name": "dsh-doubt:self-check",
         "order": 3260,
-        "summary": "先取证再断言；禁止用绝对化措辞掩盖未验证的结论。"
+        "summary": "Collect evidence before asserting; never hide unverified conclusions behind absolute phrasing."
       }
     ],
     "x-tool-namespaces": [
       {
         "serverName": "dsh-doubt",
         "transport": "in-process",
-        "source": "dsh-doubt 插件本体",
+        "source": "dsh-doubt plugin",
         "publicPrefix": "",
         "tools": [
           "verify_claims",

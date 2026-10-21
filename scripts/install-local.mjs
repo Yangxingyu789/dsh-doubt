@@ -1,19 +1,5 @@
 #!/usr/bin/env node
-/**
- * 离线安装 dsh-doubt 到 DSH profile（不联网）。
- *
- *   node scripts/install-local.mjs              # 安装 / 更新
- *   node scripts/install-local.mjs --dry        # 只看会改什么
- *   node scripts/install-local.mjs --profile web
- *
- * 做的事：
- *   1. 先构建（tsc），再把 lib / cordis.patch.yml / dsh-plugin.json / package.json / README
- *      复制到 %DSH_HOME%\plugins\dsh-doubt\
- *   2. 备份并修改 %DSH_HOME%\profiles\<profile>\package.json：
- *        dependencies 追加 "file:../../plugins/dsh-doubt"
- *        dsh.profile.bundles 末尾追加 "dsh-doubt"
- *   3. 提示你在 profile 目录跑 pnpm install --offline，然后重启宿主
- */
+
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'

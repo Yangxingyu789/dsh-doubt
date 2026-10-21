@@ -1,19 +1,9 @@
-/**
- * Tier C：离线时的「多次检查」——**不是**「再看一遍你确定吗」。
- *
- * 文献依据：
- * - 内在自纠错会让推理变差（arXiv 2310.01798，GPT-4 GSM8K 95.5→89.0，Llama-2 62.0→36.5）
- * - 独立重推导 + 多数投票有效（self-consistency），且 CoVe 的 factored 变体
- *   要求核验时**不能看到自己的草稿**，否则会复制同一个幻觉
- *
- * 所以这里做的是：把断言改写成自包含的是非题，丢给**没有草稿上下文**的
- * 独立子代理回答 N 次，取多数。拿不到子代理能力就如实返回 unavailable。
- */
+
 
 export interface FactoredHost {
   /** ctx.subagents */
   subagents: any
-  /** 发起方 agent（用于 lineage / workspace） */
+
   parent: any
 }
 
@@ -24,7 +14,7 @@ export interface FactoredVote {
 
 export interface FactoredOutcome {
   available: boolean
-  /** 多数答案（归一化后）；分裂时为 null */
+
   majority: string | null
   agree: number
   total: number
@@ -32,20 +22,13 @@ export interface FactoredOutcome {
   reason?: string
 }
 
-/**
- * 归一化：把「是的，存在 / yes / 确认」压成同一类。
- *
- * 关键：ASCII 的 yes/no 必须带**词边界**。原来写的是 `^(no|not|false|…)`，
- * 于是 `"Node.js v24.21.0 is the runtime"` 被当成否定（`no` 命中了 `Node`），
- * 三个正确的回答会一致投出 negative；`"Yes, I know the version"` 里的 `know`
- * 也会命中 `no` 被判否定。这类误判会直接反转 Tier C 的多数票。
- */
+
 const AFFIRM_HEAD_RE = /^(yes|y|true|correct)\b/
 const AFFIRM_CJK_HEAD_RE = /^(存在|是|对|确认|成立|可以|能)/
 const NEG_HEAD_RE = /^(no|not|false|none|never)\b/
 const NEG_CJK_HEAD_RE = /^(不存在|否|错|不成立|不能|无法)/
-// `存在` / `成立` 前面可能是 `不`：`不存在这个路径` 必须判否定，
-// 所以正向的裸中文词也要加否定前瞻，否则两边同时命中 → 退化成一坨原文，票就散了。
+
+
 const AFFIRM_INLINE_RE = /(^|[\s,。])(yes|true)\b|\b(exists|present|installed|available)\b|(?<!不)存在|(?<!不)成立/
 const NEG_INLINE_RE = /\b(not|no|false)\b|不存在|错误|不成立|不能|无法/
 
@@ -57,8 +40,8 @@ export function normalizeAnswer(text: string): string {
   const affirmative = AFFIRM_HEAD_RE.test(t) || AFFIRM_CJK_HEAD_RE.test(t) || AFFIRM_INLINE_RE.test(head)
   if (negative && !affirmative) return 'negative'
   if (affirmative && !negative) return 'affirmative'
-  // 两边都命中 = 语义含糊（例如「对，但不存在」）→ 不硬判，落到下面的取值分支
-  // 版本号 / 路径 / 数字类答案：取第一个可比较 token（v1.2.3 与 1.2.3 必须归一到同一票）
+
+
   const m = /(v?\d+\.\d+(?:\.\d+)?)|([A-Za-z]:\\[\w\\.-]+|\/[\w./-]+)/.exec(t)
   if (m) return (m[1] ?? m[2] ?? t.slice(0, 60)).replace(/^v(?=\d)/, '')
   return t.replace(/\s+/g, ' ').slice(0, 60)
@@ -92,7 +75,7 @@ export async function factoredCheck(
       timer = setTimeout(() => controller.abort(), opts.timeoutMs)
       run = await host.subagents.start(opts.provider, {
         label: `dsh-doubt-factored-${i + 1}`,
-        // 自包含提问：不含草稿，避免 CoVe 说的「复制同一幻觉」
+
         prompt: [{ type: 'text', text: `只回答事实，不要解释，不要道歉。${question}` }],
         parent: host.parent,
         signal: controller.signal,
@@ -111,7 +94,7 @@ export async function factoredCheck(
         reason: `subagent 调用失败：${String(e instanceof Error ? e.message : e)}`,
       }
     } finally {
-      // timer 必须在 finally 里清：start() 抛错时原来的 clearTimeout 永远走不到 → 定时器泄漏
+
       if (timer) clearTimeout(timer)
       try {
         await run?.dispose?.()

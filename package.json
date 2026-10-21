@@ -1,7 +1,7 @@
 {
   "name": "dsh-doubt",
-  "version": "0.8.4",
-  "description": "最终正文显示前审核实际工具证据；缺少验收时自动退回补查，无法验证时明确报告未完成。保留分层断言检查与文档溯源。",
+  "version": "0.1.0",
+  "description": "Evidence-first completion guard for DSH: a pre-execution gate for live mutations, tool-backed final-answer review, and a verify_claims tool for local checks.",
   "type": "module",
   "main": "lib/index.js",
   "exports": {
@@ -69,9 +69,8 @@
     "self-verification",
     "fact-check",
     "agent",
-    "答案复核",
-    "幻觉",
-    "自检"
+    "answer-review",
+    "self-check"
   ],
   "license": "MIT",
   "dsh": {

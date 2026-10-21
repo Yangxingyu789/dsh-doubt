@@ -1,19 +1,4 @@
-/**
- * 危险变更闸门：从工具轨迹里机械识别「会改变正在运行的宿主/系统」的动作，
- * 并核对三件产物——回滚路径、用户确认点、动作后的独立健康检查。
- *
- * 事故背景：上一窗口在 DSH 宿主运行中把改造版插件装进 live profile
- * （`.dsh/plugins` + `.dsh/profiles/desktop`），宿主随后所有工具报
- * `cannot get required service "sessionProjections" in inactive context`，用户被迫重启。
- * 这个闸门把「模型破坏自己的运行环境」变成结构性打回 + 回归测试，而不是道歉话术。
- *
- * 全部是纯函数：无 I/O、无网络、无模型调用；同样输入必得同样输出。
- *
- * 作用域 = **当前轮**：只检测 `call.turn === undefined || call.turn === turn` 的调用
- * （没有 turn 字段的 fixture 视为当前轮）。历史轮的危险变更**不参与**判定——否则一次
- * 早期安装会让之后每一轮普通回答都被要求附回滚路径，变成永久假阳性。历史完成声明
- * 仍由现有 LLM 审核的 postcondition 时序契约负责。
- */
+
 import { DEFAULT_CONFIG, type DoubtConfig } from './config.js'
 import { toolTrace, type ToolTrace } from './operations.js'
 import { collectText } from './scanner.js'
@@ -24,9 +9,9 @@ export interface LiveMutationFinding {
   callId: string
   name: string
   kind: LiveMutationKind
-  /** 命中的目标（路径或命令片段，≤120 字符） */
+
   target: string
-  /** 稳定规则名，测试可断言，见规格 §4 */
+
   rule: string
 }
 
@@ -35,7 +20,7 @@ export interface LiveMutationAssessment {
   findings: LiveMutationFinding[]
   requirements: { rollback: boolean; confirm: boolean; healthCheck: boolean }
   present: { rollback: boolean; confirm: boolean; healthCheck: boolean }
-  /** 打回意见（中文、逐条、可直接展示给作者），未满足时非空 */
+
   gaps: string[]
   satisfied: boolean
 }
@@ -44,7 +29,7 @@ const GAP_ROLLBACK = '危险变更缺少回滚路径：必须给出备份位置�
 const GAP_CONFIRM = '危险变更缺少用户确认点：宿主运行中的插件/profile 安装或写入不许模型自行决定，必须先说明影响面并取得确认（批准事件或用户明确授权）。'
 const GAP_HEALTH = '危险变更后缺少独立健康检查：必须在变更后另起一次工具调用证明宿主/工具仍可用（安装回执不算），并把结果写进回答。'
 
-/** 同一调用命中多规则时取最高危：install > registry/service > process > delete > write */
+
 const KIND_RANK: Record<LiveMutationKind, number> = {
   install: 6,
   registry: 5,
@@ -61,11 +46,11 @@ const WRITE_PATH_KEYS = ['file_path', 'filePath', 'path', 'target', 'dest', 'des
 const WORKDIR_KEYS = ['workdir', 'cwd', 'dir', 'workingDirectory'] as const
 
 const norm = (s: string): string => s.replace(/\\/g, '/').toLowerCase()
-/** 作用域 = 当前轮；没有 turn 字段的旧记录视为当前轮 */
+
 const inScope = (call: ToolTrace, turn: number): boolean => call.turn === undefined || call.turn === turn
 const clip = (s: string): string => (s.length > MAX_TARGET ? s.slice(0, MAX_TARGET) : s)
 
-/** liveMutationPaths 为空（或全是空串）时退回默认值，与 config.ts 的 strings() 语义一致 */
+
 function livePaths(config: DoubtConfig): string[] {
   const raw = Array.isArray(config.liveMutationPaths) ? config.liveMutationPaths : []
   const kept = raw.filter((s): s is string => typeof s === 'string' && s.trim() !== '')
@@ -86,7 +71,7 @@ function firstString(args: Record<string, unknown>, keys: readonly string[]): st
   return undefined
 }
 
-/** 命令文本来源：command / cmd / script；verify_claims 的 command checks 用 argv.join(' ') */
+
 function commandTexts(args: Record<string, unknown>): string[] {
   const texts: string[] = []
   for (const key of ['command', 'cmd', 'script'] as const) {
@@ -105,8 +90,8 @@ function commandTexts(args: Record<string, unknown>): string[] {
   return texts
 }
 
-// §4.3 触发规则（大小写不敏感）。防误报要点见规格：查询类命令、普通仓库 edit、
-// 非递归单文件 del 都不得命中。
+
+
 const RE_INSTALL = /\b(?:pnpm|npm|yarn|corepack)(?:\.cmd|\.exe)?\s+(?:install|i|add|ci|rebuild)\b/i
 const RE_INSTALL_LOCAL_TRIGGER = /\bnode(?:\.exe)?\b[^\n]*install-local(?:\.mjs|\.js)?/i
 const RE_INSTALL_LOCAL_NAME = /install-local(?:\.mjs|\.js)?/i
@@ -125,7 +110,7 @@ const RE_SCHTASKS = /\bschtasks\s+\/create\b/i
 
 function writeFinding(call: ToolTrace, config: DoubtConfig): LiveMutationFinding | undefined {
   if (!WRITE_TOOLS.has(call.name)) return undefined
-  // ops_replace 的 dryRun 只是观察，不是变更
+
   if (call.name === 'ops_replace' && call.args.dryRun === true) return undefined
   const path = firstString(call.args, WRITE_PATH_KEYS)
   if (!path || !isLivePath(path, config)) return undefined
@@ -226,7 +211,7 @@ function shellFindings(call: ToolTrace, config: DoubtConfig): LiveMutationFindin
     const mutationText = stripOperators(command)
     const installer = RE_INSTALL.exec(command)
     if (installer && live) add('install', 'install-into-live-profile', installer[0])
-    // 本仓库安装脚本会写 .dsh/plugins，不需要命令里再出现 live 路径
+
     if (RE_INSTALL_LOCAL_TRIGGER.test(command)) {
       add('write', 'install-local-script', RE_INSTALL_LOCAL_NAME.exec(command)?.[0] ?? 'install-local')
     }
@@ -262,7 +247,7 @@ function pickFinding(candidates: readonly LiveMutationFinding[]): LiveMutationFi
   return best
 }
 
-/** §4.2/§4.3：识别当前轮的 live 环境变更；一条工具调用最多一个 finding（按 callId 去重） */
+
 export function detectLiveMutations(events: readonly unknown[], turn: number, config: DoubtConfig): LiveMutationFinding[] {
   const byCall = new Map<string, LiveMutationFinding>()
   for (const call of toolTrace(events)) {
@@ -279,7 +264,7 @@ export function detectLiveMutations(events: readonly unknown[], turn: number, co
   return [...byCall.values()]
 }
 
-/** 回滚路径：回滚词 + 备份证据 + 可直接执行的回滚命令，三者同时满足 */
+
 export function rollbackDisclosed(draft: string): boolean {
   const rollbackWord = /回滚|rollback|还原|撤销|revert/i.test(draft)
   const backupEvidence = /备份|backup|\.bak\b|快照|snapshot|副本|回滚点/i.test(draft)
@@ -287,7 +272,7 @@ export function rollbackDisclosed(draft: string): boolean {
   return rollbackWord && backupEvidence && executable
 }
 
-/** 用户确认点：批准事件必须在对应 mutation 的 tool/call 之前；draft 自述「已确认」不算 */
+
 export function confirmationSeen(
   events: readonly unknown[],
   findings: readonly LiveMutationFinding[],
@@ -309,7 +294,7 @@ export function confirmationSeen(
     index !== undefined && approvalIndices.some((approval) => approval < index)
   const eventApproval = findings.every((finding) => approvedBefore(callIndexById.get(finding.callId)))
   if (eventApproval && approvalIndices.length > 0) return true
-  // 可选兜底：最后一条真人请求本身授权了这次动作（不是草稿里的自我声明）
+
   const humans = (messages ?? []).filter((m: any) =>
     m && m.role === 'user' && (!m.source?.kind || ['user', 'user-approval'].includes(m.source.kind)))
   const last = humans.length ? humans[humans.length - 1] : undefined
@@ -323,8 +308,8 @@ export function confirmationSeen(
  *  last human message only) for the pre-execution approval seam. */
 export function explicitAuthorization(text: string): boolean {
   const trimmed = text.trim()
-  // 明确的一句确认（如用户在模型询问安装后回复「确认」）本身就是授权；
-  // 旧规则要求同句出现动作词，会把这种真实确认误判为缺失。
+
+
   if (/^(?:确认|批准|同意|允许|授权|approved?|confirm(?:ed)?|yes|ok)[。.!！\s]*$/i.test(trimmed)) return true
   return /确认|批准|同意|允许|授权|approve|confirm/i.test(trimmed)
     && /安装|写入|修改|删除|停止|重启|install|write|delete|stop|restart/i.test(trimmed)
@@ -346,7 +331,7 @@ export function classifyToolCall(name: string, args: unknown, config: DoubtConfi
   return pickFinding(candidates)
 }
 
-/** 动作后的独立健康检查：变更完成后另起一次工具调用并真实完成（安装回执不算） */
+
 export function healthChecked(
   events: readonly unknown[],
   turn: number,
@@ -368,13 +353,13 @@ export function healthChecked(
   return { ok: callIds.length > 0, callIds }
 }
 
-/** 汇总裁定：mutated 时三件产物缺任何一件 → satisfied=false，gaps 逐条给出中文打回意见 */
+
 export function assessLiveMutation(input: {
   events: readonly unknown[]
   turn: number
   draft: string
   config: DoubtConfig
-  /** 真人请求（用于确认点兜底：最后一条请求本身授权了这次危险动作） */
+
   messages?: readonly any[]
 }): LiveMutationAssessment {
   const { events, turn, draft, config, messages } = input

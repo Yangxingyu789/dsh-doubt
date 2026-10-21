@@ -1,5 +1,5 @@
-// 给 PowerShell 脚本加 UTF-8 BOM：Windows PowerShell 5.1 对无 BOM 的 UTF-8 会按 ANSI
-// 解码，中文注释/字符串里的多字节字符会把引号/括号解析坏（实测 upgrade-offline.ps1 语法错误）。
+
+
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 
 const files = [

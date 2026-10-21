@@ -284,7 +284,7 @@ export function validateReview(raw: unknown, packet: ReviewPacket): ReviewDecisi
   return { approved: true, issues: [] }
 }
 
-/** 分段审核的切段计划：按 draftParts 聚合，每段 ≤ maxChars*0.55，段数有界 */
+
 export interface ReviewPlanChunk { id: number; text: string; partIds: number[] }
 
 export function planReviewChunks(draft: string, maxChars: number, maxChunks = 6): ReviewPlanChunk[] {
@@ -294,7 +294,7 @@ export function planReviewChunks(draft: string, maxChars: number, maxChunks = 6)
   let cur: { id: number; text: string }[] = []
   let len = 0
   for (const p of parts) {
-    // 末段吸收剩余内容，保证段数有界（不会因为草稿过长而无限拆分）
+
     if (cur.length && chunks.length < maxChunks - 1 && len + p.text.length > target) {
       chunks.push({ id: chunks.length, text: cur.map((x) => x.text).join(''), partIds: cur.map((x) => x.id) })
       cur = []
@@ -309,7 +309,7 @@ export function planReviewChunks(draft: string, maxChars: number, maxChunks = 6)
 
 export interface ReviewOutcome {
   decision: ReviewDecision
-  /** 未能取得有效判定的段；非空表示这轮只完成了部分覆盖（可精确披露） */
+
   uncovered: { id: number; preview: string; code?: string }[]
 }
 
@@ -318,7 +318,7 @@ const previewOf = (text: string, n = 40): string => {
   return flat.length > n ? flat.slice(0, n) : flat
 }
 
-/** 审核一个包；超时/装不下时去掉历史证据再试一次（与单包路径一致的降级） */
+
 async function reviewOnePacket(packet: ReviewPacket, request: any, llm: any, cfg: DoubtConfig): Promise<ReviewDecision> {
   let d = await reviewPacket(packet, request, llm, cfg)
   const turn = packet.evidenceContext?.currentTurn
@@ -335,19 +335,14 @@ async function reviewOnePacket(packet: ReviewPacket, request: any, llm: any, cfg
   return d
 }
 
-/**
- * 审核整份草稿。长草稿/大证据时按段拆成多次审核：单包受 reviewMaxChars 限制，
- * 装不下就会被裁剪 → complete=false → 审核者按指令返回 unavailable → 整轮 fail-open
- * （EVIDENCE_CONTEXT_LIMIT）。分段后每包只带一段正文，能容纳更多证据，总预算不再
- * 受单包上限约束；某段失败时也只披露该段，而不是放弃整轮。
- */
+
 export async function reviewDraft(
   events: readonly any[], turn: number, messages: readonly Message[], draft: string,
   request: any, llm: any, cfg: DoubtConfig,
 ): Promise<ReviewOutcome> {
-  // 确定性闸门（在切段与模型审核之前）：危险变更必须在草稿里补齐回滚路径、用户确认与
-  // 动作后独立健康检查。缺任何一件直接打回（verify），不消耗模型审核调用，也不走
-  // 审核服务故障的 fail-open 路径——这是「模型破坏自己的运行环境」的结构性防护。
+
+
+
   if (cfg.guardLiveMutation) {
     const assessment = assessLiveMutation({ events, turn, draft, config: cfg, messages })
     if (assessment.mutated && !assessment.satisfied) {
@@ -377,7 +372,7 @@ export async function reviewDraft(
       uncovered.push({ id: chunk.id, preview: previewOf(chunk.text), code: d.failure.code })
       continue
     }
-    // 拿到真实意见：立刻返回交给作者补查，不必等其余段（与单包路径语义一致）
+
     return { decision: { approved: false, issues: d.issues.slice(0, 12) }, uncovered }
   }
   if (uncovered.length) {
@@ -773,8 +768,8 @@ export function createCompletionGuard(getConfig: () => DoubtConfig, log: (...arg
       current.reviewFailed = true
       log('dsh-doubt：审核服务故障（不是任务验收失败）', decision.failure)
       // Never destroy the answer: say why the review did not complete and release the
-      // draft with an explicit "unreviewed" banner. 分段审核时只披露没审完的那几段，
-      // 已审完的段不必被一起否定（逐段覆盖优于整轮放弃）。
+
+
       const detail = (decision.failure.detail ?? decision.issues[0] ?? '').slice(0, 300)
       const detailedBanner = uncovered.length
         ? `\n\n——\n[dsh-doubt] 以上草稿**只有部分段落完成审核**（${decision.failure.code}）：${uncovered.length} 段未能取得有效判定，其余段落已审完。\n${uncovered.slice(0, 3).map((u) => `- 第 ${u.id + 1} 段：${u.preview}…`).join('\n')}${uncovered.length > 3 ? `\n- …另有 ${uncovered.length - 3} 段未审完` : ''}\n这不代表任务失败或完成，已执行工具的结果见上方记录。`

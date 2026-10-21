@@ -33,8 +33,8 @@ import { homedir, tmpdir } from 'node:os'
 import { zstdDecompressSync } from 'node:zlib'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-// 不要硬编码用户名/临时目录：既不可移植，也会把本机账户名带进公开仓库。
-// 解包后的宿主应用（含 semver 与 dsh CLI）默认在系统临时目录下；可用 DSH_ASAR_DIR 覆盖。
+
+
 const ASAR = process.env.DSH_ASAR_DIR ?? join(tmpdir(), 'dsh-asar', 'dsh')
 const CLI = join(ASAR, 'node_modules/@deepseek-ai/dsh/lib/bin.js')
 const SESSIONS = process.env.DSH_SESSIONS ?? join(process.env.DSH_HOME ?? join(homedir(), '.dsh'), 'sessions')

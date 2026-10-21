@@ -1,7 +1,4 @@
-/**
- * 联网探测：决定走「多来源交叉」还是「本地 oracle + 独立重推导」。
- * 结果带 TTL 缓存，避免每条断言都探一次。
- */
+
 
 export interface ProbeOptions {
   urls: readonly string[]

@@ -1,7 +1,7 @@
-// 审核调用的 reasoning effort：防止宿主默认 high+thinking 吃光 max_tokens。
-// 实测依据（_diag 的真实 session 包重放，见 CHANGELOG 0.6.1）：
-//   default(high) 第 1 次 maxTokens=12000 → outputTokens=12000、可见正文 0 字符 → max-tokens；
-//   同一包 effort=off → 2.9s、325 output tokens、正常给出 verify 意见。
+
+
+
+
 import assert from 'node:assert/strict'
 import { reviewPacket } from '../lib/completion.js'
 import { normalizeConfig } from '../lib/config.js'
@@ -16,7 +16,7 @@ const packet = {
 }
 const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: false, ...extra })
 
-// 1) 默认配置：审核请求显式带 reasoningEffort=off（不再交给宿主默认 high）
+
 {
   let seen
   const decision = await reviewPacket(packet, {}, { stream: (r) => { seen = r; return iterable(textChunks(approve)) } }, cfg())
@@ -26,7 +26,7 @@ const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: f
   console.log('  ✓ 默认 reviewReasoningEffort=off：审核请求带 reasoningEffort=off')
 }
 
-// 2) 可配置：low / high 透传；'default' 表示不传该字段（旧行为）
+
 {
   for (const [value, expected] of [['low', 'low'], ['high', 'high'], ['max', 'max']]) {
     let seen
@@ -40,7 +40,7 @@ const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: f
   console.log('  ✓ low/high/max 透传；default 不传字段；非法值回退 off')
 }
 
-// 3) provider 不支持 reasoning effort 时自动去掉字段重试一次（不得因此漏审）
+
 {
   const seen = []
   let attempts = 0
@@ -63,7 +63,7 @@ const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: f
   console.log('  ✓ UNSUPPORTED_REASONING_EFFORT → 去掉字段重试一次并完成审核')
 }
 
-// 3b) 宿主把「不支持 reasoning」表现为 finish=error + failure.code（不是抛异常）时也要回退
+
 {
   const seen = []
   let attempts = 0
@@ -81,7 +81,7 @@ const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: f
   console.log('  ✓ 宿主 finish=error（UNSUPPORTED_REASONING_EFFORT）→ 去掉字段重试并完成审核')
 }
 
-// 4) 回归：第 1 次 max-tokens 触发去历史重试时，重试仍显式带 off（不会退回宿主默认 high）
+
 {
   const seen = []
   let attempts = 0
@@ -100,7 +100,7 @@ const cfg = (extra = {}) => normalizeConfig({ reviewTimeoutMs: 2000, factored: f
   console.log('  ✓ max-tokens 重试：maxTokens=24000 且 reasoningEffort 仍为 off')
 }
 
-// 5) 配置默认值与既有 reviewMaxChars 默认不受影响
+
 {
   const c = normalizeConfig({})
   assert.equal(c.reviewReasoningEffort, 'off')

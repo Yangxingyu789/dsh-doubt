@@ -1,23 +1,5 @@
 #!/usr/bin/env node
-/**
- * dsh-doubt doctor —— 一条命令回答「插件是否真的装上、是否真的在生效」。
- *
- * 灵感来自 dsh 生态里 dsh-verdict 的 `verdict doctor`（只做静态可判定的事，
- * 剩下的交给真实运行）与 Aegis 的「proof before done」：
- * 不把「文件已复制」当结论，而是分开核验：
- *
- *   A. 安装一致性（静态）：仓库 / live 安装目录 / profile 链接 的版本与 lib hash；
- *   B. 装载声明（静态）：profile package.json、cordis.patch.yml、组合后的 cordis.yml；
- *   C. 运行证据（读本机落盘 session）：
- *      - system/message 是否含插件注入的提示词段（0.6.x 的「危险变更闸门」）；
- *      - 最终回答里 dsh-doubt 审核横幅的出现次数（审核真的跑过的痕迹）；
- *      - verify_claims / doubt_review 工具在真实会话里的调用次数。
- *
- * 退出码：A/B 有 FAIL → 1；C 只报告不判失败（它依赖本机是否有会话历史）。
- * 无安装时打印 SKIP 并以 0 退出（CI 友好）。
- *
- *   node scripts/doctor.mjs [--profile desktop] [--json]
- */
+
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
@@ -54,7 +36,7 @@ const rel = (base) => {
   return out
 }
 
-// ── A. 安装一致性 ────────────────────────────────────────────────────────────
+
 if (!existsSync(installed)) {
   console.log(`SKIP doctor: plugin is not installed at ${installed}`)
   process.exit(0)
@@ -81,7 +63,7 @@ if (existsSync(linkFile)) {
   add('profile-link', false, `missing ${linkFile}`)
 }
 
-// ── B. 装载声明 ──────────────────────────────────────────────────────────────
+
 const profilePkgPath = join(profileDir, 'package.json')
 if (existsSync(profilePkgPath)) {
   const profilePkg = JSON.parse(readFileSync(profilePkgPath, 'utf8'))
@@ -113,7 +95,7 @@ if (existsSync(composedPath)) {
 }
 add('node-engine', /^(\^22\.19|>=24)/.test(repoPkg.engines?.node ?? ''), `package.json engines.node=${JSON.stringify(repoPkg.engines?.node)}`)
 
-// ── C. 运行证据（本机落盘 session；只报告） ──────────────────────────────────
+
 const runtime = { session: null, systemMessages: 0, guardSection: false, answers: 0, answersWithBanner: 0, lastBannerFlags: [], verifyClaimsCalls: 0, doubtReviewCalls: 0 }
 try {
   const sessionsRoot = join(home, 'sessions')
@@ -176,7 +158,7 @@ try {
   runtime.error = String(error?.message ?? error)
 }
 
-// ── 输出 ─────────────────────────────────────────────────────────────────────
+
 const failed = checks.filter((c) => !c.ok && c.level === 'fail')
 const summary = {
   ok: failed.length === 0,

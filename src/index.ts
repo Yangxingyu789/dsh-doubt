@@ -1,13 +1,4 @@
-/**
- * dsh-doubt —— 把「你确定吗」变成插件的自动取证动作。
- *
- * 最终正文显示前独立审核工具证据；证据不足则通过宿主工具循环继续取证。
- * 另外保留：
- * 1. verify_claims 工具：模型提交断言 + 可执行检查，插件在本机真跑并回填判定。
- * 2. 系统提示词段：分层取证策略 + 硬性禁令（禁止凭记忆写编号/路径/API 名）。
- * 3. 自动取证循环：turn 结束后插件**自己**跑 Tier A/B，把实测证据注入，而不是要求模型「再检查一遍」。
- * 4. Tier C：离线且无判据时，用无草稿上下文的独立重推导 + 多数投票（不是「你确定吗」）。
- */
+
 
 import type { Context } from '@deepseek-ai/cordis'
 import { Config, normalizeConfig, type DoubtConfig } from './config.js'
@@ -19,7 +10,7 @@ import { createCompletionGuard } from './completion.js'
 import { createPreflightGuard } from './preflight.js'
 
 export const name = 'dsh-doubt'
-export const version = '0.8.4'
+export const version = '0.1.0'
 export { Config }
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js'
 export type { DoubtConfig } from './config.js'
@@ -33,7 +24,7 @@ export { NetProbe } from './network.js'
 export { assessLiveMutation, detectLiveMutations, rollbackDisclosed, confirmationSeen, healthChecked } from './guard.js'
 export type { LiveMutationAssessment, LiveMutationFinding, LiveMutationKind } from './guard.js'
 
-/** 系统提示词段位置：紧跟 dsh-ops 的 repository-tooling（3250-3252）之后 */
+
 const SECTION_ORDER = 3260
 const SECTION_NAME = 'dsh-doubt:self-check'
 
@@ -60,27 +51,27 @@ export function apply(ctx: Context, config: unknown): void {
   }
 
   if (cfg.guardPreExecute) {
-    // 执行前闸门：宿主 tools/pre-execute waterfall 在工具体执行之前运行。
-    // {kind:'ask'} 会走宿主 approval seam（权限审批注入）；无审批通道或策略 never → 拒绝。
+
+
     const preflight = createPreflightGuard(getConfig, {
       approval: () => {
         try { return (ctx as any).get?.('approval') ?? (ctx as any).approval } catch { return undefined }
       },
     })
     const registerPreflight = () => (ctx as any).on?.('tools/pre-execute', preflight, { prepend: true })
-    // 真实 cordis 用 effect 管生命周期；最小 fake ctx（单测）没有 effect 时直接注册。
+
     if (typeof (ctx as any).effect === 'function') (ctx as any).effect(registerPreflight)
     else registerPreflight()
     log('已启用执行前危险变更闸门（tools/pre-execute）：live 变更需权限审批；无审批通道/never 策略时拒绝')
   }
 
   if (cfg.verifyTool) {
-    // 回调的**第一个参数**才是「已经 inject 过的上下文」——必须在它上面取 `tools`。
-    // 闭包捕获外层 ctx 会踩到 cordis 的服务访问规则（reflect.ts: `cannot get property
-    // "tools" without inject`）：服务只落在**声明了 inject 的那个 fiber** 的 store 里，
-    // 外层 ctx 的 fiber 没声明，向上也找不到提供方（`dsh-tools` 是兄弟 fiber，不是祖先）。
-    // 实测症状：宿主只在 stderr 打一行 `dsh-doubt (dsh-doubt): Error: cannot get property
-    // "tools" without inject`，界面上完全看不出来 —— 工具与提示词段都没注册。
+
+
+
+
+
+
     ctx.inject(['tools'], (toolsCtx: Context) => {
       const tools = (toolsCtx as unknown as { tools?: { register?: (d: unknown) => unknown } })?.tools
       if (!tools || typeof tools.register !== 'function') return
@@ -118,8 +109,8 @@ export function apply(ctx: Context, config: unknown): void {
         log('已注册最终输出审核（llm/stream）：证据审核未通过时继续取证，原草稿不显示')
       })
     }
-    // Tier C 在**运行期**才用 ctx.subagents，同样不能捕获外层 ctx，否则每次评估都会抛。
-    // 这里把注入后的上下文存下来，服务不存在时回调不会触发 → 如实降级为「无子代理能力」。
+
+
     let subagentCtx: Context | null = null
     ctx.inject(['subagents'], (c: Context) => { subagentCtx = c })
 

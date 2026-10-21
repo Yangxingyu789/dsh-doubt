@@ -85,16 +85,16 @@ for (const review of [() => { throw Error('synchronous adapter failure') }, () =
   assert.equal(h.guard.failedTurn(h.agent, 1), true)
   assert.ok(Date.now() - start < 1500); h.installed.dispose()
 }
-// reviewNotice: 默认 'off' = 回答末尾不出现插件提示；显式 'short' = 一行提示。
+
 {
   const shortRun = harness({ config: { operationMaxRounds: 1, reviewNotice: 'short' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
-  await collect(await shortRun.run()) // 第一次触发 doubt_review 回执
+  await collect(await shortRun.run())
   const out = visible(await collect(await shortRun.run()))
   assert.ok(out.includes(packet.draft), 'short 模式仍放行原稿')
   assert.match(out, /本次审核未完成，已按原稿放行/)
   assert.ok(!out.includes('自动补查预算已用尽'), 'short 模式不附意见明细')
   shortRun.installed.dispose()
-  // 模型把上一轮的提示行抄进新草稿时，插件不得再追加一遍（否则用户看到两行）。
+
   const echoedDraft = `${packet.draft}\n\n——\n[dsh-doubt] 本次审核未完成，已按原稿放行。`
   const echoed = harness({ draft: echoedDraft, config: { operationMaxRounds: 1, reviewNotice: 'short' }, review: () => iterable(textChunks('{"decision":"verify","issues":["缺少功能验收"]}')) })
   await collect(await echoed.run())
@@ -119,13 +119,13 @@ const pending = collect(await cancelled.run()); setTimeout(() => cancelled.contr
 await assert.rejects(pending); cancelled.installed.dispose()
 const smalltalk = harness({ draft: '你好。', trace: [], review: () => iterable(textChunks(JSON.stringify(approval('你好。', [], 'nonfactual')))) })
 assert.equal(visible(await collect(await smalltalk.run())), '你好。'); smalltalk.installed.dispose()
-// reviewMaterialOnly（默认 true）：无实质断言的草稿不调用审核模型，直接放行。
+
 const nonMaterial = harness({ draft: '你好。', trace: [], review: () => { throw Error('reviewer must not run for a non-material draft') } })
 assert.equal(visible(await collect(await nonMaterial.run())), '你好。', 'material-only must skip the reviewer')
 assert.equal(hasMaterialClaim('你好。'), false)
 assert.equal(hasMaterialClaim('目标文件存在。'), true, 'state assertions are material')
 nonMaterial.installed.dispose()
-// reviewMaterialOnly=false 时仍强制走模型审核（用于回归旧行为）。
+
 const forcedReview = harness({ draft: '你好。', trace: [], config: { reviewMaterialOnly: false }, review: () => iterable(textChunks(JSON.stringify(approval('你好。', [], 'nonfactual')))) })
 assert.equal(visible(await collect(await forcedReview.run())), '你好。'); forcedReview.installed.dispose()
 const fragmented = JSON.stringify(approval(packet.draft, refs))
@@ -354,7 +354,7 @@ hHistory.installed.dispose()
 // Review-scope contract: omitted/truncated records are a limit of THIS packet, not an
 // author gap. Without this clause a long answer loops: the reviewer asks the author to
 // reproduce evidence that exists in history but never entered the packet, the receipt
-// budget runs out, and the answer is released with «自动补查预算已用尽».
+
 {
   let systemText = ''
   await reviewPacket(packet, {}, { stream: (r) => {

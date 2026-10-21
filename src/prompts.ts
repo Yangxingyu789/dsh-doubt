@@ -3,7 +3,7 @@ import type { FactoredOutcome } from './factored.js'
 
 export type Lang = 'zh' | 'en'
 
-/** 按回答文本判断注入语言（含 CJK 就走中文） */
+
 export function detectLanguage(text: string, preferred: 'auto' | Lang = 'auto'): Lang {
   if (preferred === 'zh' || preferred === 'en') return preferred
   return /[\u3400-\u9fff]/.test(text) ? 'zh' : 'en'
@@ -22,10 +22,7 @@ export interface EvidenceSectionInput {
   online: boolean
 }
 
-/**
- * 注入的是**插件已经实测到的证据**，不是「请你去核验」。
- * 这是把 intrinsic self-correction（文献里会变差）换成 external feedback（文献里有效）的关键。
- */
+
 export function buildEvidenceText(input: EvidenceSectionInput, lang: Lang): string {
   const { evidence, factored, strictLabeling, requireSources, online } = input
   const L = VERDICT_LABEL[lang]
@@ -103,7 +100,7 @@ export function buildEvidenceText(input: EvidenceSectionInput, lang: Lang): stri
   ].join('\n')
 }
 
-/** 兜底：完全无法机械核验时，才退化成让模型自己取证的一轮 */
+
 export function buildRecheckText(
   claims: readonly { kind: string; text: string; unmechanizable?: string }[],
   score: number,
@@ -135,17 +132,7 @@ export interface ProvenanceSectionInput {
   findings: readonly { kind: string; snippet: string }[]
 }
 
-/**
- * 交付文档的**溯源要求**。
- *
- * 这不是「再想想你确定吗」——文献里那种 intrinsic self-correction 会让结果变差。
- * 它要求的是一份**具体产物**：逐步骤溯源表。
- *
- * 依据来自实测：同一个模型在被问「所有流程是否都有据可依」时，能自己给出
- * 42 项 / 9 类（纯官方 13、官方其他产品线 2、官方+社区 1、官方+实测 1、纯社区 1、
- * 纯实测 2、工程实践 13、未验证 7、混合 2）的溯源表——**能力在，缺的只是在正确的
- * 时机自动要一次**。所以这里不判对错，只强制披露。
- */
+
 export function buildProvenanceText(input: ProvenanceSectionInput, lang: Lang): string {
   const { files, score, findings } = input
   const fileList = files.map((f) => `- ${f}`).join('\n')
@@ -208,7 +195,7 @@ Before acting you must: give a backup location and a directly executable rollbac
 After acting you must: start a **separate tool call** as an independent health check and put the measured result in the answer (an install receipt is not a health check). If the health check fails, stop the remaining work immediately and give the rollback steps.
 The final review rejects a draft that lacks any of these; do not hide the gap behind "completed" wording.`
 
-/** 系统提示词段：说明分层取证策略与硬性禁令 */
+
 export function promptSection(
   lang: Lang,
   opts: { requireSources: number; guardLiveMutation?: boolean } = { requireSources: 2 },

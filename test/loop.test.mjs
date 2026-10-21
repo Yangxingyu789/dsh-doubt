@@ -13,19 +13,7 @@ const SLOPPY = [
   '这样一定能成功，绝对没问题。',
 ].join('\n')
 
-/**
- * 宿主真实落盘形状（本机会话日志实测，勿再简化）：
- *   - `turn/end` / `turn/start` / `assistant/message` / `tool/call` 都带 data.turn
- *   - `user/message` 只有 {content,id,role,source}，**没有 turn 字段**（337/337 条实测）
- *   - 入口 user/message 出现在本轮的 turn/start 之后
- * 旧 fixture 给 user/message 补了一个 turn，于是「按 turn 匹配入口消息」永远失败、
- * maxRounds 完全不生效这件事被测试掩盖了。改回真实形状才能守住这个回归。
- *
- * 真实顺序（本机 192 个 turn 实测）：入口消息在 turn/start 之后，而自动注入的上下文
- * （runtime-context / skill-catalog / tool-jobs / 各种提醒）落在**更后面**。实测到的模式
- * 就有 `user>runtime-context>skill-catalog`、`user>tool-jobs`。所以 `aux` 不是装饰：
- * 取「窗口里最后一条 user/message」会被这些辅助注入顶掉，取**第一条**才对。
- */
+
 function events(turn, { sourceKind = 'user', text = SLOPPY, toolCalls = [], aux = null } = {}) {
   const list = [
     { type: 'turn/start', data: { turn } },
@@ -60,7 +48,7 @@ const loop = installDoubtLoop(
 )
 const tick = () => new Promise((r) => setTimeout(r, 20))
 
-// 1) 未取证的回答 → 追加一轮复核
+
 const a1 = makeAgent('s1', events(1))
 listeners.forEach(([, h]) => h({ agent: a1, status: 'idle' }))
 await tick()
@@ -70,12 +58,12 @@ assert.ok(a1.followups[0].content[0].text.includes('取证结果'), '注入文�
 assert.ok(a1.followups[0].content[0].text.includes('已证伪'), '不存在的路径应被实测证伪')
 assert.ok(a1.followups[0].content[0].text.includes('无法核验'), '含 && 的命令应标为无法机械核验')
 
-// 2) 同一个 turn 不重复触发
+
 listeners.forEach(([, h]) => h({ agent: a1, status: 'idle' }))
 await tick()
 assert.equal(a1.followups.length, 1, '同一 turn 不应重复触发')
 
-// 3) 复核轮本身还能再来一次（maxRounds=2），第三次不再触发
+
 const a2 = makeAgent('s1', events(2, { sourceKind: 'dsh-doubt' }))
 listeners.forEach(([, h]) => h({ agent: a2, status: 'idle' }))
 await tick()
@@ -85,34 +73,34 @@ listeners.forEach(([, h]) => h({ agent: a3, status: 'idle' }))
 await tick()
 assert.equal(a3.followups.length, 0, '超过 maxRounds 应停手')
 
-// 4) 调用过工具不能豁免尚未证实的其它断言
+
 const a4 = makeAgent('s2', events(1, { toolCalls: ['bash', 'read'] }))
 listeners.forEach(([, h]) => h({ agent: a4, status: 'idle' }))
 await tick()
 assert.equal(a4.followups.length, 1, '仅出现 bash/read 不能跳过路径核验')
 
-// 5) 短回答不触发
+
 const a5 = makeAgent('s3', events(1, { text: '好的，收到。' }))
 listeners.forEach(([, h]) => h({ agent: a5, status: 'idle' }))
 await tick()
 assert.equal(a5.followups.length, 0, '短回答不应触发')
 
-// 6) running / inbox 忙时不触发
+
 const a6 = makeAgent('s4', events(1))
 a6.status = 'running'
 listeners.forEach(([, h]) => h({ agent: a6, status: 'idle' }))
 await tick()
 assert.equal(a6.followups.length, 0, 'running 时不应触发')
 
-// 7) 人工新消息重置轮数预算
+
 const a7 = makeAgent('s1', events(9, { sourceKind: 'user' }))
 listeners.forEach(([, h]) => h({ agent: a7, status: 'idle' }))
 await tick()
 assert.equal(a7.followups.length, 1, '人工轮应重置预算并重新允许复核')
 
-// 8) 入口消息之后还有辅助注入（runtime-context / skill-catalog / tool-jobs 等）时，
-//    预算必须仍然累计。这正是「取窗口第一条」与「取最后一条」的分水岭：
-//    用最后一条会被 aux 顶掉 → 预算被错误归零 → maxRounds 失效。
+
+
+
 const a8a = makeAgent('s5', events(1, { sourceKind: 'user', aux: ['runtime-context', 'skill-catalog'] }))
 listeners.forEach(([, h]) => h({ agent: a8a, status: 'idle' }))
 await tick()
@@ -128,10 +116,10 @@ assert.equal(a8c.followups.length, 0, 'aux 不得把已用满的预算归零')
 
 loop.dispose()
 
-// 8) apply() 注册工具与提示词段。
-//    `inject` 必须把「注入后的上下文」交给回调 —— 真实 cordis 就是这样，
-//    而服务只落在声明了 inject 的那个 fiber 上。旧的假 ctx 写成 `cb()`（不传上下文），
-//    于是「回调里闭包捕获外层 ctx」这个真实存在的错误完全测不出来。
+
+
+
+
 const registered = []
 const sections = []
 const injectedCtx = {
@@ -149,10 +137,10 @@ assert.deepEqual(registered.map((t) => t.name), ['verify_claims'], '应注册 ve
 assert.equal(sections[0].name, 'dsh-doubt:self-check')
 assert.ok(sections[0].order > 3000 && sections[0].order < 5000)
 
-// 8b) 真实 cordis 的服务访问规则：**没 inject 的上下文**取 ctx.tools 会直接抛错。
-//     宿主实测：`dsh-doubt (dsh-doubt): Error: cannot get property "tools" without inject`
-//     —— 工具与提示词段一个都没注册，而界面上完全看不出来。
-//     这里把外层 ctx 的服务做成会抛的 getter，强制 apply 只能用注入后的上下文。
+
+
+
+
 const strictRegistered = []
 const strictSections = []
 const strictInjected = {
@@ -174,7 +162,7 @@ assert.equal(strictErr, null, 'apply 不得在未 inject 的外层 ctx 上取服
 assert.deepEqual(strictRegistered, ['verify_claims'], '必须用注入后的上下文注册工具')
 assert.equal(strictSections[0], 'dsh-doubt:self-check', '必须用注入后的上下文注入提示词段')
 
-// 9) 工具能真的执行
+
 const tool = buildVerifyTool(() => cfg)
 const out = await tool.execute({ checks: [{ kind: 'expr', source: '6*7', expectMatch: '42' }, { kind: 'fileExists', path: 'E:\\不存在-aa' }] }, { signal: undefined })
 assert.equal(out.results.length, 2)
@@ -182,11 +170,11 @@ assert.equal(out.results[0].ok, true)
 assert.equal(out.results[1].ok, false)
 assert.ok(out.summary.includes('失败 1 条'))
 
-// ---- 10) 交付文档溯源闸：与「只有正面反驳才说话」并列的独立触发类 ----
+
 //
-// 依据来自实测：一份 46k 字的部署手册上机械判定只覆盖 21 条断言、其中 20 条判不了，
-// 而同一个模型被问「所有流程是否都有据可依」后能自己产出 42 项溯源表。
-// 所以这里测的不是「判得对」，而是「该不该要一次溯源」——以及**别问第二次**。
+
+
+
 const DOC_BODY = [
   '# 部署手册',
   '',
@@ -206,7 +194,7 @@ function docEvents(turn, { path, text, sourceKind = 'user' }) {
   return [
     { type: 'turn/start', data: { turn } },
     { type: 'user/message', data: { content: [{ type: 'text', text: 'go' }], source: { kind: sourceKind }, role: 'user', id: `u${turn}` } },
-    // 注意：真实宿主写入的 arguments 是 **JSON 字符串**，不是对象
+
     { type: 'tool/call', data: { turn, name: 'write', arguments: JSON.stringify({ file_path: path, content: 'x' }) } },
     { type: 'assistant/message', data: { turn, step: 1, message: { content: [{ type: 'text', text }] } } },
     { type: 'turn/end', data: { turn, reason: 'completed' } },
@@ -250,9 +238,9 @@ assert.equal(provCount(), 1, '非交付文档（.mjs）不触发')
 await writeTurn(5, 'E:\\proj\\logs\\toolcall-probe.txt', DOC_BODY)
 assert.equal(provCount(), 1, 'logs 目录下的 .txt 是产物不是交付文档')
 
-// 独立预算：链式累计，人工新消息会重置（设计意图是「一次人工回合同一份/同一串交付最多问 4 次」），
-// 目的是不让模型「被要求溯源 → 又写一份新文档 → 又被要求」无限 ping-pong。
-// 注意 t5 是 user 轮 → 到 t6 时预算已归零，所以 t6..t9 构成一条新链（1,2,3,4），t10 才会被挡住。
+
+
+
 await writeTurn(6, 'E:\\proj\\A.md', DOC_BODY, 'dsh-doubt')
 await writeTurn(7, 'E:\\proj\\B.md', DOC_BODY, 'dsh-doubt')
 await writeTurn(8, 'E:\\proj\\C.md', DOC_BODY, 'dsh-doubt')
@@ -260,7 +248,7 @@ await writeTurn(9, 'E:\\proj\\D.md', DOC_BODY, 'dsh-doubt')
 assert.equal(provCount(), 5, '注入链上允许 4 次（t1 那次属于上一条链）')
 await writeTurn(10, 'E:\\proj\\E.md', DOC_BODY, 'dsh-doubt')
 assert.equal(provCount(), 5, 'ping-pong 链上的第 5 次必须被硬顶挡住')
-// 人工新消息应当重置预算（否则长会话里后面的文档永远拿不到溯源要求）
+
 await writeTurn(11, 'E:\\proj\\F.md', DOC_BODY, 'user')
 assert.equal(provCount(), 6, '新的 人工轮应重置溯源预算')
 provLoop.dispose()

@@ -1,7 +1,4 @@
-/**
- * 仓库自检：把「我声称的」和「文件里实际有的」逐项对齐。
- * 任何一项失败都退出码 1，可挂进 CI。
- */
+
 
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -11,7 +8,7 @@ const problems = []
 const notes = []
 const read = (p) => readFileSync(join(root, p), 'utf8')
 
-// 1. JSON 合法性
+
 for (const f of ['package.json', 'dsh-plugin.json']) {
   try {
     JSON.parse(read(f))
@@ -24,11 +21,11 @@ for (const f of ['package.json', 'dsh-plugin.json']) {
 const pkg = JSON.parse(read('package.json'))
 const manifest = JSON.parse(read('dsh-plugin.json'))
 
-// 2. 版本一致性
+
 if (pkg.version !== manifest.version) problems.push(`版本不一致：package.json=${pkg.version} dsh-plugin.json=${manifest.version}`)
 else notes.push(`版本一致：${pkg.version}`)
 
-// 3. exports 指向的文件必须存在（lib 已构建）
+
 for (const [key, val] of Object.entries(pkg.exports ?? {})) {
   const targets = typeof val === 'string' ? [val] : [val?.default, val?.types].filter(Boolean)
   for (const t of targets) {
@@ -37,19 +34,19 @@ for (const [key, val] of Object.entries(pkg.exports ?? {})) {
 }
 notes.push(`exports 条目全部存在（${Object.keys(pkg.exports ?? {}).length} 个）`)
 
-// 4. files 里列的东西必须存在
+
 for (const f of pkg.files ?? []) {
   if (!existsSync(join(root, f))) problems.push(`files 列了不存在的路径：${f}`)
 }
 
-// 5. patch.yml 的 config 键必须都在 DoubtConfig 里
+
 const configSrc = read('src/config.ts')
 const iface = configSrc.slice(configSrc.indexOf('export interface DoubtConfig'), configSrc.indexOf('export const DEFAULT_CONFIG'))
 if (!iface || iface.length < 200) problems.push('没定位到 DoubtConfig 接口，检查失败')
 const declaredKeys = new Set([...iface.matchAll(/^\s{2}([A-Za-z][\w]*)\??:/gm)].map((m) => m[1]))
 const patch = read('cordis.patch.yml')
-// 新行必须包在顶层 insert: 里，config 的缩进随之变化；按 config: 块自身的缩进取键，
-// 不再硬编码 4 空格（否则加上 insert 包裹后这里会静默变成 0 个键、检查形同虚设）。
+
+
 const patchLines = patch.split('\n')
 const cfgLine = patchLines.findIndex((l) => /^\s*config:\s*$/.test(l))
 const patchKeys = []
@@ -71,13 +68,13 @@ const unknown = patchKeys.filter((k) => !declaredKeys.has(k))
 if (unknown.length > 0) problems.push(`cordis.patch.yml 里有配置类型不认识的键：${unknown.join(', ')}`)
 else notes.push(`patch.yml 的 ${patchKeys.length} 个键都在 DoubtConfig 里`)
 
-// 6. 默认值必须真的存在于 DEFAULT_CONFIG
+
 const defaults = configSrc.slice(configSrc.indexOf('export const DEFAULT_CONFIG'))
 for (const k of declaredKeys) {
   if (!new RegExp(`^\\s{2}${k}:`, 'm').test(defaults)) problems.push(`DEFAULT_CONFIG 缺少键 ${k}`)
 }
 
-// 7. 源码/测试/文档里不得残留已改名的旧字段
+
 const stale = ['autoRecheck']
 const scanFiles = ['src/index.ts', 'src/loop.ts', 'src/config.ts', 'test/smoke.mjs', 'test/loop.test.mjs', 'cordis.patch.yml', 'README.md', 'README.zh-CN.md']
 for (const f of scanFiles) {
@@ -88,7 +85,7 @@ for (const f of scanFiles) {
 }
 notes.push('无旧字段残留（autoRecheck）')
 
-// 8. README 引用的 src/*.ts 必须存在
+
 for (const f of ['README.md', 'README.zh-CN.md']) {
   const refs = new Set([...read(f).matchAll(/\((src\/[\w.-]+\.ts)\)/g)].map((m) => m[1]))
   for (const r of refs) {
@@ -97,7 +94,7 @@ for (const f of ['README.md', 'README.zh-CN.md']) {
   notes.push(`${f} 引用 ${refs.size} 个源文件，全部存在`)
 }
 
-// 9. 测试套件数量与 README 声明一致
+
 const suiteCount = (pkg.scripts.test ?? '').split('&&').length
 for (const f of ['README.md', 'README.zh-CN.md']) {
   const text = read(f)
@@ -108,7 +105,7 @@ for (const f of ['README.md', 'README.zh-CN.md']) {
 }
 notes.push(`test 脚本 ${suiteCount} 套 + smoke`)
 
-// 10. manifest 声明的工具名必须真的在代码里注册
+
 const declaredTools = (manifest.contributes?.['x-tool-namespaces'] ?? []).flatMap((ns) => ns.tools ?? [])
 for (const t of declaredTools) {
   const toolSources = read('src/tool.ts') + read('src/completion.ts')
@@ -118,16 +115,16 @@ for (const t of declaredTools) {
 }
 notes.push(`manifest 工具声明：${declaredTools.join(', ')}`)
 
-// 11. manifest 的 entry 必须存在
+
 const entry = manifest.facets?.host?.entry
 if (!entry || !existsSync(join(root, entry))) problems.push(`manifest entry 不存在：${entry}`)
 else notes.push(`manifest entry 存在：${entry}`)
 
-// 12. patch 必须真的能把新行插进去。
-// 宿主的 applyEntryPatches（dsh-app-boot）把**没有 insert 的顶层条目**当作
-// 「按 id 覆盖已存在的行」；目标不存在时只打一句警告并跳过：
+
+
+
 //   dsh: [dsh-doubt] patch: entry "dsh-doubt" not found
-// 少了 insert 包裹 = 插件装上了却完全不加载。实测 `dsh --dump-config` 可复现。
+
 const topLevelItems = patch.split(/\n(?=- )/)
 const nonInsertNamed = topLevelItems.filter((item) => /^- (?!insert:)/.test(item) && /^\s{2,}name:/m.test(item))
 if (nonInsertNamed.length > 0) {
@@ -136,7 +133,7 @@ if (nonInsertNamed.length > 0) {
 if (!/^- insert:/m.test(patch)) problems.push('cordis.patch.yml 没有顶层 insert:，插件行不会被插入')
 else notes.push('patch.yml 用 insert: 插入新行（宿主 applyEntryPatches 会真正加载）')
 
-// 13. insert 里的 id/name 必须与 package.json 的 name 一致
+
 const pkgName = pkg.name
 if (!new RegExp(`^\\s+- id:\\s*${pkgName}\\s*$`, 'm').test(patch)) problems.push(`patch.yml 的 insert 里没有 id: ${pkgName}`)
 else notes.push(`insert 的 id 与包名一致：${pkgName}`)

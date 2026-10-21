@@ -1,14 +1,15 @@
-# dsh-doubt 自带的 patch 层。
+# dsh-doubt plugin patch.
 #
-# 新行必须包在顶层 `insert:` 里：宿主的 applyEntryPatches 把「没有 insert 的条目」当作
-# **按 id 覆盖已存在的行**，找不到目标就只打一句警告并跳过：
+# The host's applyEntryPatches treats an entry without `insert:` as an override of
+# an existing row; if the target is missing it only logs a warning and skips:
 #   dsh: [dsh-doubt] patch: entry "dsh-doubt" not found
-# 之前这里少了 insert 包裹，实测 `dsh --profile test --dump-config` 完全不会插入该行，
-# 插件根本不会加载（verify_claims、提示词段、自动取证循环全都不会出现）。
+# Earlier this file lacked the `insert:` wrapper, so `dsh --profile test --dump-config`
+# never inserted the row and the plugin was never loaded.
 #
-# 用户想改配置，就在 profile 的 cordis.patch.yml 里加同 id 条目覆盖（后加载优先）：
+# To override config, add an entry with the same id in the profile cordis.patch.yml
+# (later entries win). Note that overrides REPLACE the whole config, not deep-merge:
 #   - id: dsh-doubt
-#     config: { ... }        # 注意：覆盖是整体替换 config，不是深合并
+#     config: { ... }
 - insert:
     - id: dsh-doubt
       name: "dsh-doubt"
@@ -17,46 +18,45 @@
         verifyTool: true
         promptSection: true
 
-        # Tier A/B：插件自己取证，注入实测结果（不是要求模型「再检查一遍」）
+        # Tier A/B: the plugin collects evidence itself and injects measured results.
         autoVerify: true
         requireSources: 2
         onlineTimeoutMs: 8000
 
-        # Tier C：离线且无判据时，无草稿上下文独立重推导 + 多数投票
+        # Tier C: offline, no local judge: re-derive independently and take the majority.
         factored: true
         factoredVotes: 3
         factoredProvider: spawn
 
-        # 安全：默认不执行回答里出现的命令，只验证程序是否存在
+        # Safety: never execute commands quoted in the answer; only check program availability.
         executeAnswerCommands: false
         strictLabeling: true
-        # 交付文档（.md/.txt）写出但正文没有出处标注时，要求补一份逐步骤溯源表
+        # Require a step-by-step provenance table when a deliverable document is written
+        # without inline source annotations.
         requireProvenance: true
-        # 最终文本显示前独立审核；不受措辞、短回答与风险分门槛影响
+        # Independent review before the final text is shown.
         requireOperationEvidence: true
-        # 长回答的回执补查预算：2 太容易在一次多断言回答里被耗尽（实测 turn 9 连续两次
-        # verify 后只剩「补查预算用尽」横幅）。3 给多断言回答留一轮修复空间。
+        # Evidence-gathering budget for long answers. 2 is often exhausted by a single
+        # multi-claim answer; 3 leaves one repair round.
         operationMaxRounds: 3
-        # 审核输入是中文正文+工具证据，字符量级≈token 量级。
-        # 120k：让更多历史证据进包，减少「证据不在包里」式打回；审核已关闭 thinking。
+        # Review timeout and packet size. Review reasoning is disabled (see below).
         reviewTimeoutMs: 120000
         reviewMaxChars: 120000
-        # 长草稿分段审核：单包装不下证据时按段拆成多次审核，避免整轮 fail-open
+        # Split long drafts into segments when one packet cannot hold all evidence.
         segmentedReview: true
-        # 审核调用的 reasoning effort：宿主 DeepSeek adapter 未指定时默认 high + thinking，
-        # thinking token 与 max_tokens 共用。实测第 1 次尝试 12000 输出 token 全花在 thinking
-        # 上（可见正文 0 字符）→ max-tokens → 只能带「未经完整审核」横幅放行。默认 off。
+        # Reasoning effort for the reviewer. Default off: thinking tokens can consume
+        # the whole max_tokens budget and force an unreviewed release.
         reviewReasoningEffort: off
-        # 危险变更闸门：出现 live profile/插件安装、杀进程/停服务、注册表/服务、递归删除等
-        # 动作时，最终审核确定性打回，要求回滚路径 + 用户确认 + 动作后独立健康检查
+        # Live-mutation guard: live installs/process kills/registry changes/recursive
+        # deletes must disclose a backup, a rollback command and a user confirmation.
         guardLiveMutation: true
-        # 执行前闸门：危险 live 变更在工具体执行前要求宿主权限审批（ask）；
-        # 无审批通道或策略为 never 时拒绝执行（deny），而不是事后才披露
+        # Pre-execution gate: dangerous live mutations require host approval before the
+        # tool runs; without an approval channel or with policy `never` they are denied.
         guardPreExecute: true
-        # 最终审核未完成时的末尾提示：banner=完整横幅+意见；short=一行；off=不显示
+        # Trailing notice when review did not complete: banner / short / off.
         reviewNotice: off
-        # 只对含实质断言（版本/路径/命令/数字/代码标识/状态断言）的草稿调用审核模型；
-        # 纯闲聊草稿确定性放行，省 token。想强制每条都审核可设为 false。
+        # Only review drafts that contain material claims (versions/paths/commands/
+        # numbers/symbols/state assertions); pure chat drafts pass deterministically.
         reviewMaterialOnly: true
 
         maxRounds: 2

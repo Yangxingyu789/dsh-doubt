@@ -1,4 +1,4 @@
-// 分段审核端到端（受控 reviewer）：全通过 / 某段 unavailable / 某段 verify 立即返回 / 某段超时后去历史重试
+
 import assert from 'node:assert/strict'
 import { reviewDraft, planReviewChunks } from '../lib/completion.js'
 import { normalizeConfig } from '../lib/config.js'
@@ -16,13 +16,13 @@ const historyEvent = (id, text) => [
   { type: 'tool/result', surfaceOp: 'append', data: { turn: 0, message: { toolCallId: id, source: { callId: id }, content: [{ type: 'text', text }] } } },
 ]
 
-// 足够长的草稿，确保切成多段（reviewMaxChars=8000 → 每段约 4400 字符）
+
 const draft = ('甲'.repeat(600) + '\n').repeat(40)
 const cfg = normalizeConfig({ segmentedReview: true, reviewMaxChars: 8000, factored: false, reviewTimeoutMs: 2000 })
 const segCount = planReviewChunks(draft, cfg.reviewMaxChars).length
 assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段`)
 
-// 1) 全部段落通过 → approved，且每段各审一次
+
 {
   let calls = 0
   const out = await reviewDraft([], 1, msgs, draft, {}, { stream: (r) => { calls++; return iterable(textChunks(approveReply(r))) } }, cfg)
@@ -32,7 +32,7 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
   console.log('  ✓ 全段通过：approved，调用次数 =', calls)
 }
 
-// 2) 第 2 段返回 unavailable → 只披露该段，其余段不受影响
+
 {
   let calls = 0
   const out = await reviewDraft([], 1, msgs, draft, {}, {
@@ -50,7 +50,7 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
   console.log('  ✓ 单段 unavailable：只披露该段，failure =', out.decision.failure.code)
 }
 
-// 3) 第 2 段返回 verify → 立即返回意见，不再审后续段
+
 {
   let calls = 0
   const out = await reviewDraft([], 1, msgs, draft, {}, {
@@ -67,7 +67,7 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
   console.log('  ✓ 单段 verify：立即返回，调用次数 =', calls)
 }
 
-// 4) 第 2 段首次 REVIEW_TIMEOUT → 去掉历史证据后重试一次并放行
+
 {
   let calls = 0
   const out = await reviewDraft(historyEvent('read', 'True'), 1, msgs, draft, {}, {
@@ -75,7 +75,7 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
       calls++
       if (calls === 2) return iterable([{ type: 'finish', reason: { kind: 'error', failure: { code: 'REVIEW_TIMEOUT' } } }])
       const p = payloadOf(r)
-      // 重试那次必须已把历史证据去掉（只剩当前 turn 的）
+
       if (calls === 3) assert.ok(p.evidence.every((e) => e.turn === 1 || e.turn === undefined), '重试包应只保留当前轮证据')
       return iterable(textChunks(JSON.stringify({ decision: 'approve', segments: [{ partIds: p.draftParts.map((x) => x.id), kind: 'nonfactual', evidence: [] }] })))
     },
@@ -85,15 +85,15 @@ assert.ok(segCount > 1, `测试前提：应切成多段，实际 ${segCount} 段
   console.log('  ✓ 单段超时：去历史重试一次后放行，调用次数 =', calls)
 }
 
-// 5) segmentedReview=false 时退回单包路径（草稿需小于审核预算，否则单包会 INPUT_LIMIT，这正是旧行为）
+
 {
   let calls = 0
   const single = normalizeConfig({ segmentedReview: false, reviewMaxChars: 8000, factored: false, reviewTimeoutMs: 2000 })
-  const smallDraft = '乙'.repeat(2000) // < reviewMaxChars，单包能装下
+  const smallDraft = '乙'.repeat(2000)
   const out = await reviewDraft([], 1, msgs, smallDraft, {}, { stream: (r) => { calls++; return iterable(textChunks(approveReply(r))) } }, single)
   assert.equal(out.decision.approved, true)
   assert.equal(calls, 1, '关闭分段后应只有一次审核调用')
-  // 反证：关闭分段 + 超预算草稿 → 单包 INPUT_LIMIT（这正是改造前长任务 fail-open 的机制）
+
   let calls2 = 0
   const big = await reviewDraft([], 1, msgs, draft, {}, { stream: (r) => { calls2++; return iterable(textChunks(approveReply(r))) } }, single)
   assert.equal(big.decision.approved, false)

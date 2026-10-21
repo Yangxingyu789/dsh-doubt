@@ -1,24 +1,10 @@
-/**
- * verify_claims 工具：让模型把「我认为是这样」交给插件真实执行。
- *
- * 用**裸 JSON Schema** 注册（不 import dsh-tools），
- * 这样插件运行时不需要解析到宿主内部包，第三方插件更安全。
- */
+
 
 import type { DoubtConfig } from './config.js'
 import { agentWorkspace, sessionCwd } from './scanner.js'
 import { runCheck, type Check, type CheckOutcome } from './verify.js'
 
-/**
- * 当前会话的工作目录。
- *
- * 权威来源是 `exec.agent.session.header.cwd` —— 宿主自己的工具就是这么拿的
- * （`dsh-tool-fs/lib/index.js:173`、`dsh-tool-bash/lib/index.js:294`，两处独立一致）。
- * 我上一版用的是「在 `snapshotEvents()` 里找 `type === 'session'` 的事件」，那是**日志文件**
- * 的形状而不是运行时形状，实测在活体上回落到 profile 目录。事件扫描作为兜底保留。
- *
- * 返回值带 `source`：工具结果自己就能证明走了哪条路，不用再靠推断。
- */
+
 const agentWorkspaceCache = new WeakMap<object, { cwd: string; source: string } | null>()
 function resolveWorkspace(exec: { agent?: unknown } | undefined, fallback: string): { cwd: string; source: string } {
   const agent = exec?.agent
@@ -44,7 +30,7 @@ function resolveWorkspace(exec: { agent?: unknown } | undefined, fallback: strin
   return { cwd: fallback, source: 'cfg.workspace' }
 }
 
-/** ctx.tools.register 接受的最小定义形状 */
+
 export interface PlainToolDefinition {
   name: string
   description: string
@@ -103,8 +89,8 @@ const OUTPUT_SCHEMA = {
   additionalProperties: false,
   properties: {
     summary: { type: 'string', description: '一行总结：通过/失败条数' },
-    // 本机 oracle 实际用的查找起点与来源。放出来是为了让结果**自证**走了哪条路，
-    // 不用再靠推断 —— 上一次正是靠它定位到 header 与事件扫描的差别。
+
+
     workspace: {
       type: 'object',
       additionalProperties: false,
@@ -154,9 +140,9 @@ export function buildVerifyTool(getConfig: () => DoubtConfig): PlainToolDefiniti
     },
     async execute(args: any, exec: { signal?: AbortSignal; agent?: unknown }) {
       const cfg = getConfig()
-      // 本机 oracle 的查找起点：显式 cwd > 当前会话的工作目录 > 配置里的 workspace。
-      // 不给的话会落到宿主进程的 cwd（= profile 目录），实测 `packageVersion typescript`
-      // 会返回「本机没有该包」——而它其实装在用户的项目里。
+
+
+
       const explicit = typeof args?.cwd === 'string' && args.cwd.trim() ? args.cwd.trim() : null
       const resolved = explicit ? { cwd: explicit, source: 'explicit args.cwd' } : resolveWorkspace(exec, cfg.workspace)
       const rawChecks = Array.isArray(args?.checks) ? args.checks : []
