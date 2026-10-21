@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { extractClaims } from '../lib/claims.js'
 import { gatherEvidence, verdictOf } from '../lib/evidence.js'
 import { normalizeConfig } from '../lib/config.js'
 import { scanAnswer } from '../lib/scanner.js'
 
 const cfg = normalizeConfig({ workspace: process.cwd() })
+const existingPath = join(process.cwd(), 'package.json')
+const missingPath = join(process.cwd(), '__dsh-doubt-missing__', 'a', 'b.yaml')
 
 
 
@@ -26,7 +29,7 @@ assert.equal(verdictOf([{ ok: false, weak: true }, { ok: false }], cfg, false).v
 
 
 const claims = extractClaims(scanAnswer([
-  '配置文件在 E:\\dsh-doubt\\package.json。',
+  `配置文件在 ${existingPath}。`,
   '依赖 typescript 5.9.3，包名 `@deepseek-ai/cordis`。',
   '调用 `normalizeConfig(raw)` 即可。',
   '```bash',
@@ -73,7 +76,7 @@ assert.equal(pathEv.verdict, 'confirmed', '真实存在的路径应被离线证�
 assert.ok(pathEv.provenance.length >= 1 && pathEv.provenance[0].startsWith('✓'), 'provenance 应带 ✓ 与来源标签')
 
 const bogus = await gatherEvidence(
-  extractClaims(scanAnswer('路径 E:\\zz-definitely-missing\\a\\b.yaml 和包 `this-pkg-does-not-exist-xyz` 都在。', {}).findings, {}),
+  extractClaims(scanAnswer(`路径 ${missingPath} 和包 \`this-pkg-does-not-exist-xyz\` 都在。`, {}).findings, {}),
   cfg,
   { online: false, probedAt: Date.now(), latencyMs: 0 },
 )
