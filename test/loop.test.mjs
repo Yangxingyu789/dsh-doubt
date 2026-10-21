@@ -1,15 +1,17 @@
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { installDoubtLoop } from '../lib/loop.js'
 import { normalizeConfig } from '../lib/config.js'
 import { buildVerifyTool } from '../lib/tool.js'
 import { apply } from '../lib/index.js'
 
+const MISSING = join(process.cwd(), '__dsh-doubt-loop-missing__', 'config.yaml')
 const SLOPPY = [
   '改完直接跑：',
   '```bash',
   'pnpm run build && pnpm start',
   '```',
-  '默认端口是 19387，配置文件在 E:\\app\\config.yaml。',
+  `默认端口是 19387，配置文件在 ${MISSING}。`,
   '这样一定能成功，绝对没问题。',
 ].join('\n')
 
