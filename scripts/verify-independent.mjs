@@ -253,14 +253,16 @@ if (!existsSync(SESSIONS)) {
   const { gatherEvidence } = await lib('evidence.js')
   const { normalizeConfig } = await lib('config.js')
   const cfg = normalizeConfig({})
-  const localText = '本机配置文件在 E:\\dsh-doubt\\nope-9f2b.yaml，我已确认过。'
+  const localDir = process.cwd()
+  const localFile = join(localDir, 'nope-9f2b.yaml')
+  const localText = `本机配置文件在 ${localFile}，我已确认过。`
   const evLocal = await gatherEvidence(extractClaims(scanAnswer(localText).findings, { text: localText }), cfg,
-    { online: false, probedAt: Date.now(), latencyMs: 0 }, 'C:/work/dsh-doubt')
+    { online: false, probedAt: Date.now(), latencyMs: 0 }, localDir)
   const stillRefutes = evLocal.find((e) => e.kind === 'path')?.verdict === 'refuted'
   const methodCallSilent = commandAvailability('z.Dispose()', ['z.Dispose()']).noEvidence === true
   const remoteText = '登录到目标服务器后，把配置写到 E:\\dsh-doubt\\nope-9f2b.yaml，然后重启。'
   const evRemote = await gatherEvidence(extractClaims(scanAnswer(remoteText).findings, { text: remoteText }), cfg,
-    { online: false, probedAt: Date.now(), latencyMs: 0 }, 'C:/work/dsh-doubt')
+    { online: false, probedAt: Date.now(), latencyMs: 0 }, localDir)
   // the meaningful assertion: a remote-context path must not end up REFUTED
   const remoteNotRefuted = evRemote.filter((e) => e.kind === 'path').every((e) => e.verdict !== 'refuted')
   const ok = stillRefutes && methodCallSilent && remoteNotRefuted
