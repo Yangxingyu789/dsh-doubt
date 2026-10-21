@@ -6,9 +6,8 @@ on:
   pull_request:
 
 jobs:
-  verify:
-    # Windows is the primary target (local oracles, argv escaping, PATHEXT, junctions).
-    # Ubuntu is included to keep the code portable.
+  static:
+    # Portable checks: no installed DSH app required.
     strategy:
       fail-fast: false
       matrix:
@@ -25,7 +24,31 @@ jobs:
           node-version: ${{ matrix.node-version }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      # Typecheck, build, unit tests, smoke, repository self-audit, host tests and
-      # host-loop regression. Host tests that need an installed desktop app SKIP
-      # honestly (exit 0) in CI; real regressions FAIL the build.
-      - run: npm run verify
+      - run: npm run check
+      - run: npm run build
+      - run: npm run smoke
+      - run: npm run audit
+
+  tests:
+    # Host integration is Windows-first (local oracles, argv escaping, PATHEXT,
+    # junctions). These suites SKIP with exit 0 when no DSH install is present.
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22.x, 24.x]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npm run build
+      - run: npm test
+      - run: npm run verify:host
+      - run: npm run verify:host-loop
+      - run: npm run verify:independent
