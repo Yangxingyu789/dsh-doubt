@@ -3,7 +3,7 @@
 This page records what was checked for the public `0.1.x` releases, with the command or
 artifact used. It is a historical snapshot, not a live guarantee.
 
-## 0.1.5 (installability and documentation)
+## 0.1.6 (installability and documentation)
 
 | Check | Result | Evidence |
 |---|---|---|

@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.1.6（文档与仓库安全复查）
+
+- 修正发布检查命令：`npm run pack` → `npm pack`。
+- 修正文档中的默认 `liveMutationPaths`：补齐 `program files`、`programdata`、
+  `c:/windows`，与 `src/config.ts` 一致。
+- 启用 GitHub 私密漏洞报告、secret scanning、push protection、漏洞提醒和
+  Dependabot security updates。
+- 保留 Dependabot 版本更新自动化，但暂缓首批自动 PR，保持 0.1.x 依赖固定。
+- 安装地址和发布资产固定到 `v0.1.6`。
+- 运行时代码与 0.1.5 相同，未改变审核策略、闸门规则或默认配置。
+
 ## 0.1.5（中文文档与展示完善）
 
 - 新增完整中文文档集：索引、架构、配置参考、兼容性、发布流程、FAQ（`docs/zh/`）。

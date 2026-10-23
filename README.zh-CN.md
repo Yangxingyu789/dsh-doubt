@@ -8,7 +8,7 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#要求)
 [![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
 [![Tests](https://img.shields.io/badge/tests-12%20suites-brightgreen)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
-![Version](https://img.shields.io/badge/version-0.1.5-blue)
+![Version](https://img.shields.io/badge/version-0.1.6-blue)
 
 <p align="center"><img src="assets/icon.png" alt="dsh-doubt 图标" width="180"></p>
 
@@ -69,7 +69,7 @@ Agent 的回答经常“听起来完成了”：文件写了却没读回、依�
 ### DSH 插件管理器（推荐）
 
 ```bash
-dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.5
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.6
 ```
 
 重启 harness 并刷新界面；插件在 **Settings → Plugins** 中管理，可随时启用/禁用。
@@ -77,7 +77,7 @@ dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.5
 
 ### Windows 桌面（离线安装）
 
-下载 `dsh-doubt-0.1.5-source.zip` Release 资产（或 clone `v0.1.5` tag），在解压后的源码
+下载 `dsh-doubt-0.1.6-source.zip` Release 资产（或 clone `v0.1.6` tag），在解压后的源码
 目录运行 PowerShell：
 
 ```powershell
@@ -97,7 +97,7 @@ pnpm install --offline
 ### 从源码安装
 
 ```bash
-git clone --branch v0.1.5 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.6 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop

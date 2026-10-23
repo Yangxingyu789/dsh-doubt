@@ -60,7 +60,7 @@
 |---|---:|---|
 | `guardPreExecute` | `true` | 工具执行前询问/拒绝危险 live 变更 |
 | `guardLiveMutation` | `true` | live 变更后要求备份、回滚命令和动作后健康检查 |
-| `liveMutationPaths` | `.dsh/plugins`、`.dsh/profiles` | 被视为 live 宿主状态的路径前缀 |
+| `liveMutationPaths` | `.dsh/profiles`、`.dsh/plugins`、`program files`、`programdata`、`c:/windows` | 被视为 live 宿主状态的路径前缀 |
 
 ## 操作证据
 

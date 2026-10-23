@@ -34,7 +34,7 @@ repository as-is and does not run a build step.
 
 ```bash
 npm run verify                 # local, with DSH_APP_DIR when available
-npm run pack --dry-run         # inspect package contents
+npm pack --dry-run              # inspect package contents
 ```
 
 Wait for the CI matrix on `main` to pass.

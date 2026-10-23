@@ -61,7 +61,7 @@ object**, not a deep merge; include every key you want to keep.
 |---|---:|---|
 | `guardPreExecute` | `true` | Ask/deny dangerous live mutations before the tool body runs |
 | `guardLiveMutation` | `true` | Require backup + rollback + post-action health check after a live mutation |
-| `liveMutationPaths` | `.dsh/plugins`, `.dsh/profiles` | Path prefixes considered live-host state |
+| `liveMutationPaths` | `.dsh/profiles`, `.dsh/plugins`, `program files`, `programdata`, `c:/windows` | Path prefixes considered live-host state |
 
 ## Operation evidence
 
