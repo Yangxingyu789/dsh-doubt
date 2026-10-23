@@ -4,9 +4,13 @@
 [![Release](https://img.shields.io/github/v/release/Yangxingyu789/dsh-doubt?display_name=tag)](https://github.com/Yangxingyu789/dsh-doubt/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.4-blue)
+[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4B32C3)](https://github.com/deepseek-ai/deepseek-harness)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#要求)
+[![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
+[![Tests](https://img.shields.io/badge/tests-12%20suites-brightgreen)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-0.1.5-blue)
 
-<img src="assets/icon.png" alt="dsh-doubt 图标" width="96">
+<p align="center"><img src="assets/icon.png" alt="dsh-doubt 图标" width="180"></p>
 
 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）的回答完成度守卫：在最终回答
 显示前核对它引用的真实工具证据，避免模型把未验证的断言当成已完成的任务。
@@ -50,13 +54,14 @@ Agent 的回答经常“听起来完成了”：文件写了却没读回、依�
 ![dsh-doubt 请求流程](assets/architecture.svg)
 
 工具调用先经过执行前闸门；最终回答在显示前经过无工具证据审核。边界说明见
-[架构文档](docs/architecture.md)，完整配置见 [配置参考](docs/configuration.md)。
+[架构文档](docs/zh/architecture.md)，完整配置见 [配置参考](docs/zh/configuration.md)，
+常见问题见 [FAQ](docs/zh/faq.md)。
 
 ## 要求
 
 - Node.js `^22.19` 或 `>=24`
 - 集成测试（`verify:host*`）需要 DSH 桌面应用或宿主包
-- 已在 DSH 桌面运行时 `0.2.1-rc.2` 上测试；见 [兼容性](docs/compatibility.md)
+- 已在 DSH 桌面运行时 `0.2.1-rc.2` 上测试；见 [兼容性](docs/zh/compatibility.md)
 - 主要平台是 Windows；Linux/macOS 可用于开发和 CI
 
 ## 安装
@@ -64,7 +69,7 @@ Agent 的回答经常“听起来完成了”：文件写了却没读回、依�
 ### DSH 插件管理器（推荐）
 
 ```bash
-dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.4
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.5
 ```
 
 重启 harness 并刷新界面；插件在 **Settings → Plugins** 中管理，可随时启用/禁用。
@@ -72,7 +77,7 @@ dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.4
 
 ### Windows 桌面（离线安装）
 
-下载 `dsh-doubt-0.1.4-source.zip` Release 资产（或 clone `v0.1.4` tag），在解压后的源码
+下载 `dsh-doubt-0.1.5-source.zip` Release 资产（或 clone `v0.1.5` tag），在解压后的源码
 目录运行 PowerShell：
 
 ```powershell
@@ -92,7 +97,7 @@ pnpm install --offline
 ### 从源码安装
 
 ```bash
-git clone --branch v0.1.4 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.5 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop
@@ -163,8 +168,8 @@ npm run audit          # 仓库一致性自检
 npm run verify         # 完整验证链（有 DSH_APP_DIR 时包含宿主测试）
 ```
 
-贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，完整文档索引见
-[docs/README.md](docs/README.md)。
+贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，完整中文文档索引见
+[docs/zh/README.md](docs/zh/README.md)。
 
 ## 验证溯源
 

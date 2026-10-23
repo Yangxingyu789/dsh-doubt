@@ -1,7 +1,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 import { Config } from './config.js';
 export declare const name = "dsh-doubt";
-export declare const version = "0.1.4";
+export declare const version = "0.1.5";
 export { Config };
 export { normalizeConfig, DEFAULT_CONFIG } from './config.js';
 export type { DoubtConfig } from './config.js';

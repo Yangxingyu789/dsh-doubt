@@ -4,9 +4,13 @@
 [![Release](https://img.shields.io/github/v/release/Yangxingyu789/dsh-doubt?display_name=tag)](https://github.com/Yangxingyu789/dsh-doubt/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.4-blue)
+[![DSH](https://img.shields.io/badge/DSH-0.2.1--rc.2-4B32C3)](https://github.com/deepseek-ai/deepseek-harness)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#requirements)
+[![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
+[![Tests](https://img.shields.io/badge/tests-12%20suites-brightgreen)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
+![Version](https://img.shields.io/badge/version-0.1.5-blue)
 
-<img src="assets/icon.png" alt="dsh-doubt icon" width="96">
+<p align="center"><img src="assets/icon.png" alt="dsh-doubt icon" width="180"></p>
 
 A completion guard for [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) agents.
 It checks the *real tool evidence* behind an answer before that answer is shown, so a
@@ -70,7 +74,7 @@ boundaries and [configuration](docs/configuration.md) for every option.
 ### DSH plugin manager (recommended)
 
 ```bash
-dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.4
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.5
 ```
 
 Restart the harness and refresh the UI; the plugin is managed under **Settings → Plugins**
@@ -78,7 +82,7 @@ and can be enabled or disabled there. Pin a tag or commit for reproducible insta
 
 ### Windows desktop (offline installer)
 
-Download the `dsh-doubt-0.1.4-source.zip` release asset (or clone the `v0.1.4` tag),
+Download the `dsh-doubt-0.1.5-source.zip` release asset (or clone the `v0.1.5` tag),
 then run PowerShell from the unpacked source directory:
 
 ```powershell
@@ -100,7 +104,7 @@ already exist.
 ### From source
 
 ```bash
-git clone --branch v0.1.4 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.5 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop

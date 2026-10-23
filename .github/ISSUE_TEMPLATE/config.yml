@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security report
+    url: https://github.com/Yangxingyu789/dsh-doubt/security/advisories/new
+    about: Please report vulnerabilities privately, not in a public issue.
+  - name: Documentation
+    url: https://github.com/Yangxingyu789/dsh-doubt/blob/main/docs/README.md
+    about: Architecture, configuration, compatibility, releasing and FAQ.
