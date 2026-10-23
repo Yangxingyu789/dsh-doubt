@@ -3,12 +3,20 @@
 [![CI](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml/badge.svg)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.1-blue)
+![Version](https://img.shields.io/badge/version-0.1.2-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt 图标" width="96">
 
 [DeepSeek Harness](https://github.com/deepseek-ai)（DSH）的回答完成度守卫：在最终回答
 显示前核对它引用的真实工具证据，避免模型把未验证的断言当成已完成的任务。
+
+## 为什么需要它
+
+Agent 的回答经常“听起来完成了”：文件写了却没读回、依赖靠猜、命令没跑过就宣布成功。
+默认失败模式是自信的叙述加一条没有证据的断言。
+
+`dsh-doubt` 在回合结束处加一道审核边界。它不问模型“你确定吗”，而是检查本轮实际发生的
+工具调用和结果。
 
 ## 它做什么
 
@@ -34,7 +42,7 @@
 审核缺少材料时不会通过删除更多证据重审；不支持的 reasoning 参数在同一次分段审核及
 格式重试中只探测一次。每次审核在插件日志中记录 `审核用量`，包括输入/输出字符数、
 耗时和模型返回的 token/缓存计数；未返回 usage 表示未知，不能当作零或用字符数替代。
-这些日志不记录提示词、工具原文或凭据。默认取证范围、补查轮数、验收条件保持不变。详见 [检查记录](docs/token-audit-2026-10-21.md)。
+这些日志不记录提示词、工具原文或凭据。详见 [检查记录](docs/token-audit-2026-10-21.md)。
 
 ## 要求
 
@@ -42,17 +50,53 @@
 - 集成测试（`verify:host*`）需要 DSH 桌面应用或宿主包
 - 主要平台是 Windows；Linux/macOS 可用于开发和 CI
 
-## 安装（开发）
+## 安装
+
+### Windows 桌面（离线安装）
+
+下载 `dsh-doubt-0.1.2-source.zip` Release 资产（或 clone `v0.1.2` tag），在解压后的源码
+目录运行 PowerShell：
+
+```powershell
+pnpm install
+node .\scripts\install-local.mjs --profile desktop
+cd "$env:USERPROFILE\.dsh\profiles\desktop"
+pnpm install --offline
+```
+
+安装脚本会构建插件，把 `lib/`、配置、资源和文档复制到
+`$DSH_HOME\plugins\dsh-doubt`，备份 profile 的 `package.json`，并把依赖和 bundle
+写入目标 profile。升级前请先备份现有插件目录。完成后重启 DSH；如果 profile 配置里
+禁用了插件，需要显式启用。
+
+`--profile <name>` 可切换到其他 profile，目标 profile 目录必须已存在。
+
+### 从源码安装
+
+```bash
+git clone --branch v0.1.2 https://github.com/Yangxingyu789/dsh-doubt.git
+cd dsh-doubt
+pnpm install
+node scripts/install-local.mjs --profile desktop
+```
+
+如果只是开发插件本身：
 
 ```bash
 pnpm install
-npm run build          # tsc -> lib/
-npm test               # 单元测试
-npm run doctor         # 检查已安装的 DSH 插件（如存在）
+npm run build
+npm test
 ```
 
-装进 live DSH profile 请使用离线安装脚本：构建、备份当前插件、复制 `lib/`、执行
-`pnpm install --offline` 并校验文件哈希。见 [scripts/install-local.mjs](scripts/install-local.mjs)。
+## 快速开始
+
+重启 DSH 后，问一个需要真实证据的问题，例如：
+
+> 读取 `package.json`，只回答它的版本号。
+
+最终回答会先与真实 `read` 结果对照；未通过审核的草稿不会显示。需要直接核对断言时可用
+`verify_claims`。插件日志中的 `审核用量` 记录字符数与 provider usage，不记录提示词、
+工具原文或凭据。
 
 ## 配置（节选）
 
@@ -67,6 +111,29 @@ npm run doctor         # 检查已安装的 DSH 插件（如存在）
 | `reviewNotice` | `off` | 审核未完成时的末尾提示：`banner` / `short` / `off` |
 | `requireProvenance` | `true` | 交付文档无出处标注时要求溯源表 |
 
+## 版本与发布历史
+
+- **公开发布序列：`0.1.x`。** 首个公开版本是 `0.1.0`。
+- `0.7.x`、`0.8.x` 是公开前的内部开发 tag，不是安装目标，也不应当按“更新的公开版本”排序。
+- 请使用最新的 `v0.1.x` GitHub Release 及其源码资产。插件版本以 `package.json`、
+  `dsh-plugin.json` 和运行时插件横幅为准。
+
+## 限制
+
+- 闸门与扫描器是命令/文本启发式；特殊引号、变量、嵌套 shell 或其他编码载荷可能被
+  保守拦截或漏判。**闸门不是安全边界。**
+- 最终审核依赖一次模型调用；无法完成时会 fail-open 放行，日志有记录，但默认
+  `reviewNotice: off` 不会在回答后追加可见提示。审核本身也会消耗模型 token。
+- reviewer 检查证据，不检查语义正确性或用户意图；用户原话的复述可能被当作上下文，
+  而不是新的模型断言。
+- 主要目标是 Windows；Linux/macOS 支持覆盖开发和 CI。
+- 公开的 `0.1.x` 接口与配置项可能变化。
+
+## 安全
+
+漏洞报告方式见 [SECURITY.md](SECURITY.md)。不要在公开 issue 中粘贴凭据、token、
+本地会话内容或可利用载荷。
+
 ## 开发
 
 ```bash
@@ -75,46 +142,16 @@ npm run build          # 编译到 lib/
 npm test               # 12 个单元测试文件
 npm run smoke          # 在裸 Cordis 应用里加载插件
 npm run audit          # 仓库一致性自检
-npm run verify         # 完整验证链（含宿主测试）
+npm run verify         # 完整验证链（有 DSH_APP_DIR 时包含宿主测试）
 ```
 
-## 限制
+贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-- 闸门与扫描器是命令/文本启发式；特殊引号、变量、嵌套 shell 可能被保守拦截或漏判。
-- 最终审核依赖一次模型调用；无法完成时会 fail-open 放行，日志有记录，但默认
-  `reviewNotice: off` 不会在回答后追加可见提示。
-- 0.1.0 是首个公开版本，接口与配置项可能变化。
+## 验证溯源
+
+历史验证快照、命令和已知限制记录在 [docs/provenance.md](docs/provenance.md)。
+Token 审计记录见 [docs/token-audit-2026-10-21.md](docs/token-audit-2026-10-21.md)。
 
 ## 许可证
 
 MIT，见 [LICENSE](LICENSE)。更新日志：[CHANGELOG.md](CHANGELOG.md)。
-## 逐步骤溯源表（0.1.0 发布时快照；当前版本 0.1.1 见 CHANGELOG）
-
-以下条目在写入本表前核对（本地文件、`git ls-remote`、命令输出）。未抓取任何外部链接，因此徽章可达性明确标注为未验证。
-
-| # | 条目 | 断言 | 依据 | 类别 |
-|---|---|---|---|---|
-| 1 | 版本 | 两个清单与插件源码均为 0.1.0 | `package.json:3`、`dsh-plugin.json:5`、`src/index.ts:13`；`npm run audit` → `版本一致：0.1.0` | 有出处 |
-| 2 | 宿主加载 | 插件以 0.1.0 加载 | `node test/host.test.mjs` → `Loaded 0.1.0` | 有出处 |
-| 3 | 发布检查 | 11 个测试文件、smoke、audit 13 项、host-loop 四模式通过 | 提交 `e9061bf` 前的命令输出 | 有出处 |
-| 4 | 注释清理方法 | 使用 TS AST/scanner 辅助函数 | TypeScript 5.9.3；`node_modules/typescript/lib/typescript.d.ts:8505`（`getLeadingCommentRanges`）、`:8521`（`getTextPos`）、`:8523`（`getTokenPos`） | 有出处 |
-| 5 | 清理脚本 | 未提交进仓库 | `git ls-files scripts/strip-cn-comments.mjs` → 0；`Test-Path` → False | 有出处（否定核对） |
-| 6 | 中文注释 | src/test/scripts 中已无中文注释行 | `Select-String '^\s*(//|\*|/\*).*CJK'` → 0 行 | 有出处 |
-| 7 | Git 引用 | 核对时远端 main 为 `e9061bf`，tag `v0.1.0^{}` 为 `e9061bf` | `git ls-remote` 输出；后续文档提交 `90e8dc4` 已推进 main | 有出处 |
-| 8 | live 安装 | 已安装插件仍是 0.8.4（0.1.0 未安装） | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | 有出处 |
-| 9 | 徽章可达性 | CI/License/Node/Version 徽章在 GitHub 正常显示 | 未抓取 URL；shields.io 与 GitHub Actions 徽章地址为常规用法 | 无依据（未验证） |
-| 10 | 兼容性表述 | “0.1.0 是首个公开版本，接口可能变化” | 规划性表述，无实测产物 | 无依据 |
-## 逐步骤溯源表（仓库清理与文档修订，2026-10-21）
-
-以下条目在写入本表前核对。仅在事实本身就是“本机路径”时才写出该路径；未抓取任何外部链接。
-
-| # | 条目 | 断言 | 依据 | 类别 |
-|---|---|---|---|---|
-| 1 | 文档文件 | 仓库根目录存在 README.md、README.zh-CN.md、CHANGELOG.md | `Test-Path` → True；`git ls-files` 三个文件都在 | 有出处 |
-| 2 | package.json 字段 | `main` 为 `lib/index.js`；`files` 含 `assets/icon*.png` | 读取 `package.json`；`main=lib/index.js`；`assets/` 有 4 个文件 | 有出处 |
-| 3 | 本机排除文件 | `.git/info/exclude` 含内部工作记录的本机忽略项 | 文件存在；`Select-String` → 1 命中 | 有出处（本机文件） |
-| 4 | 内部文档移出树 | HEAD 树中已无该工作记录 | `git ls-tree -r HEAD --name-only` 过滤 → 0 | 有出处 |
-| 5 | 本地副本保留 | 工作区内仍保留该工作记录供本机使用 | `Test-Path` → True | 有出处 |
-| 6 | 本机插件路径 | `C:\Users\Example\.dsh\plugins\dsh-doubt` 存在（0.1.0 表第 8 行使用） | `Test-Path` → True | 有出处 |
-| 7 | 历史清除 | 从历史提交清除该文件需要 `git filter-repo` / `filter-branch` + 强制推送 | 未安装、未执行；仅为基于 Git 行为的建议，无命令输出 | 无依据 |
-| 8 | 推送状态 | 本地提交 `151ba29` 存在；其远端推送成功 | 本地 `git rev-parse` → `151ba29`；远端最后一次 `git ls-remote` 因连接错误失败，远端引用未复核 | 混合：本地有出处，远端无依据（未验证） |

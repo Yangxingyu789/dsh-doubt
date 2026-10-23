@@ -1,5 +1,16 @@
 # 更新日志
 
+## 0.1.2（发布工程化）
+
+- 补齐公开发布元数据：`repository`、`homepage`、`bugs`，安装地址固定到 `v0.1.2` release。
+- README 重写为面向用户的安装、快速开始、版本历史和限制说明；内部验证快照移到
+  [docs/provenance.md](docs/provenance.md)。
+- 新增 `SECURITY.md`、`CONTRIBUTING.md`、行为准则、Issue 模板和 PR 模板。
+- 新增 tag 触发的 Release workflow：构建插件 tarball 和源码 zip，并发布 Release。
+- 修复只会在 CI 运行的路径假设（`E:` 盘、固定工作目录），Windows/Ubuntu、Node 22/24
+  的 static 与 tests job 全部通过。
+- 运行时代码与 0.1.1 相同，未改变审核策略、闸门规则或默认配置。
+
 ## 0.1.1（Token 循环优化 + 执行前闸门加固）
 
 - **执行前闸门加固**：修复 `cmd /c` 包装、`powershell -EncodedCommand`、`Expand-Archive`/`tar`/`robocopy` 目标、`git checkout/clean`、`icacls`/`takeown`/`attrib`/`Set-Acl`、`Set-ItemProperty` 文件路径、`Rename-Item`、`sc.exe`、`regedit /s`、Node `fs` 写 API + 环境变量路径等可绕过 live 写入拦截的路径；保留 live→外部复制/读取放行。新增对抗回归用例。

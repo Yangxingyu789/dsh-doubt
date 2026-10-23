@@ -1,0 +1,55 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npm run check
+      - run: npm run build
+      - run: npm test
+      - run: npm run smoke
+      - run: npm run audit
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: npm run build
+      - run: npm pack
+      - run: >-
+          git archive --format=zip
+          --prefix="dsh-doubt-${GITHUB_REF_NAME#v}/"
+          --output="dsh-doubt-${GITHUB_REF_NAME#v}-source.zip" HEAD
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}"
+          ./*.tgz ./*-source.zip
+          --title "dsh-doubt ${GITHUB_REF_NAME}"
+          --notes-file "docs/release-notes-${GITHUB_REF_NAME#v}.md"

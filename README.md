@@ -3,13 +3,22 @@
 [![CI](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml/badge.svg)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.1-blue)
+![Version](https://img.shields.io/badge/version-0.1.2-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt icon" width="96">
 
 A completion guard for [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) agents.
 It checks the *real tool evidence* behind an answer before that answer is shown, so a
 model cannot pass off an unverified claim as a completed task.
+
+## Why
+
+Agent answers often sound finished before the work is actually verified: a file was
+written but never read back, a dependency was guessed, a command was never run. The
+default failure mode is confident prose plus an unsupported claim.
+
+`dsh-doubt` adds a review boundary at the end of the turn. It does not ask the model
+whether it is sure; it checks what actually happened in the session.
 
 ## What it does
 
@@ -46,19 +55,56 @@ token counters when available; missing usage is unknown, not zero. See the
 - DSH desktop app or host bundle for the integration tests (`verify:host*`)
 - Windows is the primary platform; Linux/macOS are supported for development and CI
 
-## Install (development)
+## Install
+
+### Windows desktop (offline installer)
+
+Download the `dsh-doubt-0.1.2-source.zip` release asset (or clone the `v0.1.2` tag),
+then run PowerShell from the unpacked source directory:
+
+```powershell
+pnpm install
+node .\scripts\install-local.mjs --profile desktop
+cd "$env:USERPROFILE\.dsh\profiles\desktop"
+pnpm install --offline
+```
+
+The installer builds the plugin, copies `lib/`, config, assets and docs into
+`$DSH_HOME\plugins\dsh-doubt`, backs up the profile `package.json`, and adds the
+dependency and bundle to the selected profile. Back up the existing plugin directory
+first if you are upgrading. Restart DSH afterward; if the plugin is disabled in the
+profile config, enable it explicitly.
+
+Use `--profile <name>` for a profile other than `desktop`. The profile directory must
+already exist.
+
+### From source
+
+```bash
+git clone --branch v0.1.2 https://github.com/Yangxingyu789/dsh-doubt.git
+cd dsh-doubt
+pnpm install
+node scripts/install-local.mjs --profile desktop
+```
+
+For development rather than installation:
 
 ```bash
 pnpm install
-npm run build          # tsc -> lib/
-npm test               # unit tests
-npm run doctor         # check the installed DSH plugin, if present
+npm run build
+npm test
 ```
 
-To install into a live DSH profile, use the offline installer script; it builds,
-backs up the current plugin, copies `lib/`, runs `pnpm install --offline`, and verifies
-file hashes. See [scripts/install-local.mjs](scripts/install-local.mjs) for the Windows
-offline flow.
+## Quick start
+
+After restarting DSH, ask a question that requires real evidence, for example:
+
+> Read `package.json` and answer with only its version.
+
+The final answer is held until the review compares it with the actual `read` result.
+Use `verify_claims` when you want a claim checked directly. Review attempts are logged
+as `审核用量` with character counts and provider usage; prompts, tool payloads and
+credentials are not logged.
 
 ## Configuration (excerpt)
 
@@ -73,6 +119,33 @@ All options live under the plugin's `config:` block (see [cordis.patch.yml](cord
 | `reviewNotice` | `off` | Trailing notice after an incomplete review: `banner` / `short` / `off` |
 | `requireProvenance` | `true` | Require a provenance table for annotation-free deliverables |
 
+## Versioning and release history
+
+- **Public release series: `0.1.x`.** The first public release was `0.1.0`.
+- `0.7.x` and `0.8.x` tags are pre-public development history. They are not installation
+  targets and do not sort as newer public releases.
+- Use the latest `v0.1.x` GitHub Release and its source asset. The plugin version is
+  reported in `package.json`, `dsh-plugin.json` and the runtime plugin banner.
+
+## Limits
+
+- The gate and scanner are heuristics over commands and text; unusual quoting, variables,
+  nested shells or otherwise encoded payloads can be classified conservatively
+  (deny/ask) or missed. **The gate is not a security boundary.**
+- The final review depends on a model provider call. When it cannot complete, the answer
+  is released fail-open; logs record the failure but the default `reviewNotice: off`
+  does not add a visible notice. Review also consumes model tokens.
+- The reviewer checks evidence, not semantic correctness or user intent. A claim that is
+  a restatement of the user's own wording can be treated as user context rather than a
+  new factual assertion.
+- Windows is the primary target; Linux/macOS support covers development and CI.
+- The public `0.1.x` interfaces and config keys may change.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for private vulnerability reporting. Do not open a public
+issue containing credentials, tokens, local session content or exploitable payloads.
+
 ## Development
 
 ```bash
@@ -81,48 +154,17 @@ npm run build          # compile to lib/
 npm test               # 12 unit test files
 npm run smoke          # load the plugin in a bare Cordis app
 npm run audit          # repository consistency checks
-npm run verify         # full chain, including host tests
+npm run verify         # full chain, including host tests when DSH_APP_DIR is available
 ```
 
-## Limits
+Contribution notes are in [CONTRIBUTING.md](CONTRIBUTING.md).
 
-- The gate and scanner are heuristics over commands and text; unusual quoting, variables
-  or nested shells can be classified conservatively (deny/ask) or missed.
-- The final review depends on a model provider call. When it cannot complete, the answer
-  is released fail-open; logs record the failure but the default `reviewNotice: off`
-  does not add a visible notice.
-- Version 0.1.0 is the first public release; interfaces and config keys may change.
+## Verification provenance
+
+Historical verification snapshots, commands and known limits are recorded in
+[docs/provenance.md](docs/provenance.md). The token-audit record is in
+[docs/token-audit-2026-10-21.md](docs/token-audit-2026-10-21.md).
 
 ## License
 
 MIT — see [LICENSE](LICENSE). Changelog: [CHANGELOG.md](CHANGELOG.md).
-## 逐步骤溯源表（0.1.0 发布时快照；当前版本 0.1.1 见 CHANGELOG）
-
-Checked before this section was written (local files, `git ls-remote`, command output). No external URL was fetched, so badge reachability is explicitly left unverified.
-
-| # | Item | Claim | Evidence | Class |
-|---|---|---|---|---|
-| 1 | Version | 0.1.0 in both manifests and plugin source | `package.json:3`, `dsh-plugin.json:5`, `src/index.ts:13`; `npm run audit` → `版本一致：0.1.0` | sourced |
-| 2 | Host load | Plugin loads as 0.1.0 | `node test/host.test.mjs` → `Loaded 0.1.0` | sourced |
-| 3 | Release checks | 11 test files, smoke, audit 13 items, host-loop 4 modes pass | command output before commit `e9061bf` | sourced |
-| 4 | Comment cleanup method | TS AST/scanner helpers used | TypeScript 5.9.3; `node_modules/typescript/lib/typescript.d.ts:8505` (`getLeadingCommentRanges`), `:8521` (`getTextPos`), `:8523` (`getTokenPos`) | sourced |
-| 5 | Cleanup script | Not committed to the repository | `git ls-files scripts/strip-cn-comments.mjs` → 0; `Test-Path` → False | sourced (negative) |
-| 6 | CJK comments | No Chinese comment lines remain in src/test/scripts | `Select-String '^\s*(//|\*|/\*).*CJK'` → 0 lines | sourced |
-| 7 | Git refs | At check time remote main was `e9061bf` and tag `v0.1.0^{}` was `e9061bf` | `git ls-remote` output; the later docs commit `90e8dc4` advanced main | sourced |
-| 8 | Live install | Installed plugin is still 0.8.4 (0.1.0 not installed) | `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.4` | sourced |
-| 9 | Badge reachability | CI/License/Node/Version badges render on GitHub | No HTTP fetch was performed; shields.io and GitHub Actions badge URLs are conventional | unsourced (not verified) |
-| 10 | Compatibility statement | "0.1.0 is the first public release; interfaces may change" | Planning statement, no measured artifact | unsourced |
-## 逐步骤溯源表（仓库清理与文档修订，2026-10-21）
-
-Checked before this section was written. Local-only paths are named only where the fact itself is about them. No HTTP fetch was performed.
-
-| # | Item | Claim | Evidence | Class |
-|---|---|---|---|---|
-| 1 | Documentation files | README.md, README.zh-CN.md and CHANGELOG.md exist at the repository root | `Test-Path` → True; `git ls-files` lists all three | sourced |
-| 2 | package.json fields | `main` is `lib/index.js`; `files` includes `assets/icon*.png` | `package.json` read; `main=lib/index.js`; `assets/` contains 4 files | sourced |
-| 3 | Local exclude file | `.git/info/exclude` contains a local-only ignore entry for the internal handoff document | file exists; `Select-String` → 1 match | sourced (local file) |
-| 4 | Internal doc removed from tree | The internal handoff document is no longer in the HEAD tree | `git ls-tree -r HEAD --name-only` filtered for it → 0 | sourced |
-| 5 | Local copy retained | The handoff document still exists in the working directory for local use | `Test-Path` → True | sourced |
-| 6 | Local plugin path | `C:\Users\Example\.dsh\plugins\dsh-doubt` exists (path used in the 0.1.0 table) | `Test-Path` → True | sourced |
-| 7 | History purge | Removing the file from past commits needs `git filter-repo` / `filter-branch` plus a force push | Not installed and not run; recommendation based on Git behavior, no command output | unsourced |
-| 8 | Push state | Local commit `151ba29` exists; its remote push succeeded | Local: `git rev-parse` → `151ba29`; remote: last `git ls-remote` failed with a connection error, so the remote ref is unverified | mixed: local sourced, remote unsourced (unverified) |
