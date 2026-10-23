@@ -14,8 +14,8 @@ const approveReply = (r) => {
 
 const turn = 1
 const cfg = normalizeConfig({ reviewMaxChars: 8000, factored: false, reviewTimeoutMs: 2000 })
-const LIVE_PROFILE = 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop'
-const LIVE_PLUGIN_INDEX = 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt\\lib\\index.js'
+const LIVE_PROFILE = 'C:\\Users\\Example\\.dsh\\profiles\\desktop'
+const LIVE_PLUGIN_INDEX = 'C:\\Users\\Example\\.dsh\\plugins\\dsh-doubt\\lib\\index.js'
 const call = (id, name, args = {}, t = turn) => ({ type: 'tool/call', data: { turn: t, callId: id, name, arguments: JSON.stringify(args) } })
 const result = (id, text = 'ok', t = turn) => ({
   type: 'tool/result', surfaceOp: 'append',
@@ -45,7 +45,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   assert.deepEqual(findings.map((f) => f.rule), ['install-into-live-profile'])
   assert.equal(findings[0].kind, 'install')
 
-  assert.deepEqual(rulesOf([call('b2', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: 'E:\\dsh-doubt' }), result('b2', 'Done')]), [])
+  assert.deepEqual(rulesOf([call('b2', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: 'C:\\work\\dsh-doubt' }), result('b2', 'Done')]), [])
   console.log('  ✓ pnpm.cmd install（workdir=live profile）→ install-into-live-profile；仓库目录不触发')
 }
 {
@@ -68,14 +68,14 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
 {
 
   const cases = [
-    ['Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"', 'temp path must be allowed', false],
+    ['Remove-Item -Recurse -Force "C:\\Users\\Example\\AppData\\Local\\Temp\\probe"', 'temp path must be allowed', false],
     ['Remove-Item -Recurse -Force $env:TEMP\\probe', '$env:TEMP must be allowed', false],
-    ['rm -rf node_modules', null, false, 'E:\\dsh-doubt'],
-    ['Remove-Item "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe" -Recurse -Force; Write-Host "deleted=$?"', 'temp delete with trailing Write-Host must be allowed (0.8.2 parser fix)', false],
+    ['rm -rf node_modules', null, false, 'C:\\work\\dsh-doubt'],
+    ['Remove-Item "C:\\Users\\Example\\AppData\\Local\\Temp\\probe" -Recurse -Force; Write-Host "deleted=$?"', 'temp delete with trailing Write-Host must be allowed (0.8.2 parser fix)', false],
     ['Remove-Item $dir -Recurse -Force', 'variable target stays conservative (blocked)', true],
     ['Remove-Item -Recurse C:\\Windows\\System32\\drivers', 'system dir must be blocked', true],
     ['Remove-Item -Recurse C:\\', 'drive root must be blocked', true],
-    ['Remove-Item -Recurse C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt', 'live path must be blocked', true],
+    ['Remove-Item -Recurse C:\\Users\\Example\\.dsh\\plugins\\dsh-doubt', 'live path must be blocked', true],
     ['Remove-Item -Recurse', 'unknown target must stay conservative', true],
   ]
   for (const [command, label, expected, workdir] of cases) {
@@ -88,11 +88,11 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
 {
 
   const cases = [
-    [`Copy-Item 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt' 'E:\\dsh-doubt\\_diag\\backup' -Recurse -Force`, false, 'copy OUT of live path (backup) must be allowed'],
-    [`Copy-Item 'E:\\dsh-doubt\\lib' 'C:\\Users\\Administrator\\.dsh\\plugins\\dsh-doubt\\lib' -Recurse -Force`, true, 'copy INTO live path must be flagged'],
-    [`Set-Content -Path 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop\\x.yml' -Value 'x'`, true, 'content write into live path must be flagged'],
-    [`Get-Content 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop\\cordis.yml' > 'E:\\dsh-doubt\\_diag\\out.txt'`, false, 'redirect OUT of live path (read-only source) must be allowed'],
-    [`Get-Content 'E:\\dsh-doubt\\README.md' > 'C:\\Users\\Administrator\\.dsh\\profiles\\desktop\\x.txt'`, true, 'redirect INTO live path must be flagged'],
+    [`Copy-Item 'C:\\Users\\Example\\.dsh\\plugins\\dsh-doubt' 'C:\\work\\dsh-doubt\\_diag\\backup' -Recurse -Force`, false, 'copy OUT of live path (backup) must be allowed'],
+    [`Copy-Item 'C:\\work\\dsh-doubt\\lib' 'C:\\Users\\Example\\.dsh\\plugins\\dsh-doubt\\lib' -Recurse -Force`, true, 'copy INTO live path must be flagged'],
+    [`Set-Content -Path 'C:\\Users\\Example\\.dsh\\profiles\\desktop\\x.yml' -Value 'x'`, true, 'content write into live path must be flagged'],
+    [`Get-Content 'C:\\Users\\Example\\.dsh\\profiles\\desktop\\cordis.yml' > 'C:\\work\\dsh-doubt\\_diag\\out.txt'`, false, 'redirect OUT of live path (read-only source) must be allowed'],
+    [`Get-Content 'C:\\work\\dsh-doubt\\README.md' > 'C:\\Users\\Example\\.dsh\\profiles\\desktop\\x.txt'`, true, 'redirect INTO live path must be flagged'],
   ]
   for (const [command, expected, label] of cases) {
     const events = [call('w', 'pwsh', { command }), result('w', 'done')]
@@ -163,7 +163,7 @@ const rulesOf = (events, t = turn) => detectLiveMutations(events, t, cfg).map((f
   const harmless = [
     call('r', 'read', { path: LIVE_PLUGIN_INDEX }), result('r', 'contents'),
     call('v', 'pwsh', { command: 'node --version' }), result('v', 'v24.21.0'),
-    call('e', 'edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }), result('e', 'saved'),
+    call('e', 'edit', { file_path: 'C:\\work\\dsh-doubt\\src\\x.ts' }), result('e', 'saved'),
     call('o', 'ops_replace', { path: LIVE_PLUGIN_INDEX, dryRun: true }), result('o', 'dry-run ok'),
     call('q', 'pwsh', { command: 'pnpm --version' }), result('q', '12.10.1'),
     call('w', 'verify_claims', { checks: [{ kind: 'command', argv: ['node', '--version'] }] }), result('w', 'v24.21.0'),
@@ -192,12 +192,12 @@ const incident = [
   call('profile-install', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: LIVE_PROFILE }),
   result('profile-install', 'Done in 3.2s'),
 ]
-const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1（安装前完整副本）。\n回滚命令：\n```powershell\ncd E:\\dsh-doubt\ngit checkout -- src lib\n```'
+const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1（安装前完整副本）。\n回滚命令：\n```powershell\ncd C:\\work\\dsh-doubt\ngit checkout -- src lib\n```'
 {
   assert.equal(rollbackDisclosed(ROLLBACK_DRAFT), true)
   assert.equal(rollbackDisclosed('已把改造版插件装进 live profile，插件已生效。'), false)
   assert.equal(rollbackDisclosed('已回滚，备份在 E:\\bak。'), false, '有回滚词和备份但缺少可直接执行的命令')
-  assert.equal(rollbackDisclosed('回滚命令：cd E:\\dsh-doubt'), false, '有回滚词和命令但缺少备份证据')
+  assert.equal(rollbackDisclosed('回滚命令：cd C:\\work\\dsh-doubt'), false, '有回滚词和命令但缺少备份证据')
 
   const findings = detectLiveMutations(incident, turn, cfg)
   assert.equal(findings.length, 2)
@@ -323,8 +323,8 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
 {
   let calls = 0
   const events = [
-    call('edit', 'edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }), result('edit', 'saved'),
-    call('read', 'read', { path: 'E:\\dsh-doubt\\src\\x.ts' }), result('read', 'saved'),
+    call('edit', 'edit', { file_path: 'C:\\work\\dsh-doubt\\src\\x.ts' }), result('edit', 'saved'),
+    call('read', 'read', { path: 'C:\\work\\dsh-doubt\\src\\x.ts' }), result('read', 'saved'),
   ]
   const out = await reviewDraft(events, turn, msgs, '已修改 src/x.ts 并回读确认。', {}, {
     stream: (r) => { calls++; return iterable(textChunks(approveReply(r))) },
@@ -338,7 +338,7 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
   const events = [
     call('old-install', 'pwsh', { command: 'node scripts/install-local.mjs' }, 1), result('old-install', 'installed', 1),
     call('old-profile', 'pwsh', { command: 'pnpm.cmd install --offline', workdir: LIVE_PROFILE }, 1), result('old-profile', 'Done', 1),
-    call('edit', 'edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }, 5), result('edit', 'saved', 5),
+    call('edit', 'edit', { file_path: 'C:\\work\\dsh-doubt\\src\\x.ts' }, 5), result('edit', 'saved', 5),
   ]
   const assessment = assessLiveMutation({ events, turn: 5, draft: '已修改 src/x.ts。', config: cfg })
   assert.equal(assessment.mutated, false, '历史轮安装不得污染当前轮')
@@ -380,12 +380,12 @@ const ROLLBACK_DRAFT = '回滚路径：备份在 E:\\backup\\dsh-plugins-0.5.1�
 
 
   for (const [name, args] of [
-    ['edit', { file_path: 'E:\\dsh-doubt\\src\\x.ts' }],
+    ['edit', { file_path: 'C:\\work\\dsh-doubt\\src\\x.ts' }],
     ['read', { file_path: LIVE_PLUGIN_INDEX }],
     ['pwsh', { command: 'node --version' }],
 
-    ['pwsh', { command: 'Remove-Item -Recurse -Force "C:\\Users\\Administrator\\AppData\\Local\\Temp\\probe"' }],
-    ['pwsh', { command: 'rm -rf node_modules', workdir: 'E:\\dsh-doubt' }],
+    ['pwsh', { command: 'Remove-Item -Recurse -Force "C:\\Users\\Example\\AppData\\Local\\Temp\\probe"' }],
+    ['pwsh', { command: 'rm -rf node_modules', workdir: 'C:\\work\\dsh-doubt' }],
   ]) {
     const decision = await askGuard(execOf(name, args), allow)
     assert.equal(decision.kind, 'allow', `${name} 普通操作应放行：${JSON.stringify(args)}`)

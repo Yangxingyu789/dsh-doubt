@@ -1,11 +1,13 @@
-﻿# dsh-doubt 升级启动器（ASCII 输出，始终留下控制台/日志，避免闪退看不到错误）
+# dsh-doubt 升级启动器（ASCII 输出，始终留下控制台/日志，避免闪退看不到错误）
 param(
   [string]$Profile = 'desktop',
-  [string]$Repo = 'C:\work\dsh-doubt',
+  [string]$Repo = (Split-Path -Parent $PSScriptRoot),
+  [string]$App = '',
   [switch]$CheckOnly,
   [int]$WaitMinutes = 15
 )
 $ErrorActionPreference = 'Continue'
+if (-not (Test-Path (Join-Path $Repo 'package.json'))) { $Repo = Split-Path -Parent $PSScriptRoot }
 $log = Join-Path $Repo '_diag\upgrade-console.log'
 New-Item -ItemType Directory -Path (Split-Path $log) -Force | Out-Null
 function Say([string]$m) {
@@ -46,7 +48,17 @@ if ($LASTEXITCODE -ne 0) {
   exit 1
 }
 Say 'upgrade OK; starting DeepSeek Harness'
-$app = 'E:\dsh\DeepSeek Harness.exe'
-if (Test-Path $app) { Start-Process -FilePath $app | Out-Null; Say 'started DeepSeek Harness' }
-else { Say "WARN: $app not found; start it manually" }
+if (-not $App) {
+  if ($env:DSH_APP_DIR) {
+    $App = Join-Path $env:DSH_APP_DIR 'DeepSeek Harness.exe'
+  } else {
+    $candidates = @(
+      (Join-Path $env:LOCALAPPDATA 'Programs\DeepSeek Harness\DeepSeek Harness.exe'),
+      (Join-Path $env:ProgramFiles 'DeepSeek Harness\DeepSeek Harness.exe')
+    )
+    $App = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+  }
+}
+if ($App -and (Test-Path $App)) { Start-Process -FilePath $App | Out-Null; Say 'started DeepSeek Harness' }
+else { Say 'WARN: DeepSeek Harness not found; start it manually or pass -App <path>' }
 Say 'done'

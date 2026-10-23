@@ -1,4 +1,4 @@
-﻿# dsh-doubt 离线升级脚本（DSH 必须完全退出后运行）
+# dsh-doubt 离线升级脚本（DSH 必须完全退出后运行）
 #
 # 为什么需要它：0.7.0 起的执行前闸门会把「在运行中的宿主里安装/改写 live profile/plugins」
 # 直接拒绝（无审批通道或策略 never 时 deny）。因此升级不能在 DSH 会话内执行，必须在
@@ -7,13 +7,13 @@
 # 用法：
 #   1) 完全退出 DeepSeek Harness（任务管理器结束所有 "DeepSeek Harness" 进程）
 #   2) 右键「使用 PowerShell 运行」本脚本，或：
-#        pwsh -NoProfile -ExecutionPolicy Bypass -File C:\work\dsh-doubt\scripts\upgrade-offline.ps1
+#        pwsh -NoProfile -ExecutionPolicy Bypass -File <repo>\scripts\upgrade-offline.ps1
 #   3) 脚本成功后，启动 DeepSeek Harness
 #   4) 回到会话里说「已启动」，让 Lead 用 npm run doctor 验证安装与加载
 #
 # 可选参数：
 #   -Profile desktop   目标 profile（默认 desktop）
-#   -Repo    C:\work\dsh-doubt   仓库路径（默认本脚本上一级）
+#   -Repo    <repo>    仓库路径（默认本脚本上一级）
 param(
   [string]$Profile = 'desktop',
   [string]$Repo = (Split-Path -Parent $PSScriptRoot),

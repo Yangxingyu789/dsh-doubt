@@ -1,6 +1,6 @@
 {
   "name": "dsh-doubt",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Evidence-first completion guard for DSH: a pre-execution gate for live mutations, tool-backed final-answer review, and a verify_claims tool for local checks.",
   "type": "module",
   "main": "lib/index.js",
@@ -80,8 +80,8 @@
     },
     "install": {
       "preferred": "tarball",
-      "tarball": "https://github.com/Yangxingyu789/dsh-doubt/releases/download/v0.1.2/dsh-doubt-0.1.2.tgz",
-      "zip": "https://github.com/Yangxingyu789/dsh-doubt/archive/refs/tags/v0.1.2.zip",
+      "tarball": "https://github.com/Yangxingyu789/dsh-doubt/releases/download/v0.1.3/dsh-doubt-0.1.3.tgz",
+      "zip": "https://github.com/Yangxingyu789/dsh-doubt/archive/refs/tags/v0.1.3.zip",
       "git": "https://github.com/Yangxingyu789/dsh-doubt.git"
     }
   },

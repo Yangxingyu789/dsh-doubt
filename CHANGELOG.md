@@ -1,5 +1,14 @@
 # 更新日志
 
+## 0.1.3（发布工程化后续）
+
+- Windows 升级启动器和离线升级脚本不再硬编码开发机的 `C:\work\dsh-doubt` 仓库路径和
+  DSH 安装路径：仓库从脚本位置推导，应用从 `DSH_APP_DIR` / 标准安装位置发现，
+  可用 `-App` 覆盖。
+- 清理测试和历史文档中的示例个人路径；README 增加最新 Release 徽章。
+- 安装地址和发布资产固定到 `v0.1.3`。
+- 运行时代码与 0.1.2 相同，未改变审核策略、闸门规则或默认配置。
+
 ## 0.1.2（发布工程化）
 
 - 补齐公开发布元数据：`repository`、`homepage`、`bugs`，安装地址固定到 `v0.1.2` release。
@@ -169,74 +178,74 @@
 
 ## 0.4.0（独立验证驱动的运行期修复 + 溯源闸）
 
-这一轮的每个结论都由**不继承作者推理**的独立验证者复核过：一个专门证伪，一个做变异测试  
-（把每处修复逐个改回去，看测试是否真的会失败）。结果是 14 处里 11 处被测试保护、**3 处零覆盖**，  
+这一轮的每个结论都由**不继承作者推理**的独立验证者复核过：一个专门证伪，一个做变异测试
+（把每处修复逐个改回去，看测试是否真的会失败）。结果是 14 处里 11 处被测试保护、**3 处零覆盖**，
 另有一条 `expr` 的结论被**证伪**。以下按发现顺序记录。
 
 ### 新增
 
-- **溯源闸**（`requireProvenance`，默认开）：本轮若 `write`/`edit` 写出了交付文档（`.md`/`.txt`，  
-  排除 `logs/`、`tmp/` 等）且正文没有出处小节，则要求补一份逐步骤溯源表：每条要么**有出处**  
-  （链接/文档标题/版本号）要么**无依据**，无依据的必须留在表里并显式标注。  
-  设计依据：在一份真实 46k 字部署手册上，机械判定只覆盖 21 条断言（20 条判不了），  
-  但同一个模型被问一句「所有流程是否都有据可依」后能自己产出 42 项溯源表——能力在、触发器不在。  
-  噪音控制：**同一份文档只问一次**（Windows 下路径按大小写不敏感归一），独立预算、一次人工回合最多 4 次，  
-  不受 `maxRounds` 影响。实测：126 轮文档密集会话 6 次（每份文档一次，不是每次写入一次）、11 轮编码会话 0 次、  
+- **溯源闸**（`requireProvenance`，默认开）：本轮若 `write`/`edit` 写出了交付文档（`.md`/`.txt`，
+  排除 `logs/`、`tmp/` 等）且正文没有出处小节，则要求补一份逐步骤溯源表：每条要么**有出处**
+  （链接/文档标题/版本号）要么**无依据**，无依据的必须留在表里并显式标注。
+  设计依据：在一份真实 46k 字部署手册上，机械判定只覆盖 21 条断言（20 条判不了），
+  但同一个模型被问一句「所有流程是否都有据可依」后能自己产出 42 项溯源表——能力在、触发器不在。
+  噪音控制：**同一份文档只问一次**（Windows 下路径按大小写不敏感归一），独立预算、一次人工回合最多 4 次，
+  不受 `maxRounds` 影响。实测：126 轮文档密集会话 6 次（每份文档一次，不是每次写入一次）、11 轮编码会话 0 次、
   手册在溯源附录存在前 1 次/存在后 0 次。
-- `scripts/verify-independent.mjs`（`npm run verify:independent`）：只用**外部裁判**核验本仓库——  
-  真实 `dsh` CLI、真实 `semver`、真实 `cordis`、本机会话日志、子进程、守卫单调性；缺解包宿主时如实 SKIP。  
+- `scripts/verify-independent.mjs`（`npm run verify:independent`）：只用**外部裁判**核验本仓库——
+  真实 `dsh` CLI、真实 `semver`、真实 `cordis`、本机会话日志、子进程、守卫单调性；缺解包宿主时如实 SKIP。
   存在理由：测试和代码是一起写的，「测试通过」是弱证据。
-- **项目图标**：`assets/icon.png`（512×512）、`assets/icon-256.png`、`assets/icon.ico`（16–256 多尺寸，  
+- **项目图标**：`assets/icon.png`（512×512）、`assets/icon-256.png`、`assets/icon.ico`（16–256 多尺寸，
   Windows 快捷方式用），由 `assets/make-icon.py`（Pillow，超采样抗锯齿）生成；README 中英双语顶部引用，
   `.gitattributes` 中 `*.png`/`*.ico` 已标记为二进制。
-- `.gitignore` 忽略 `_diag/`：本机排查现场含会话记录、浏览器登录库备份与系统日志，属纯本地隐私材料，  
+- `.gitignore` 忽略 `_diag/`：本机排查现场含会话记录、浏览器登录库备份与系统日志，属纯本地隐私材料，
   绝不进版本库。
 
 ### 修复：运行期接口（前三项是插件此前根本没工作过的原因）
 
-- **插件此前完全没挂载**：`cordis.patch.yml` 的行缺顶层 `insert:`，而宿主 `applyEntryPatches`  
-  只在**已有**条目上按 id 覆盖、找不到就 warn+skip。实测：加 `insert:` 后 `dsh --profileX --dump-config`  
+- **插件此前完全没挂载**：`cordis.patch.yml` 的行缺顶层 `insert:`，而宿主 `applyEntryPatches`
+  只在**已有**条目上按 id 覆盖、找不到就 warn+skip。实测：加 `insert:` 后 `dsh --profileX --dump-config`
   从 2 字节（空）变成 461 字节并含 `- id: dsh-doubt`。
-- **插件此前完全哑掉**：`ctx.inject(['tools'], () => ctx.tools)` 的闭包抓的是**外层** ctx，访问服务抛  
+- **插件此前完全哑掉**：`ctx.inject(['tools'], () => ctx.tools)` 的闭包抓的是**外层** ctx，访问服务抛
   `cannot get property "tools" without inject`，而该错误只进 stderr、UI 里看不到。改为使用注入回调传入的 ctx。
-- **本机 oracle 一直在查 profile 目录**：`DEFAULT_CONFIG.workspace = process.cwd()` 在**插件加载时**求值，  
-  而宿主进程的 cwd 是 `…\.dsh\profiles\desktop`，于是 `packageVersion typescript` 报「本机没有该包」。  
-  改为读运行时的 `exec.agent.session.header.cwd`（宿主自己的工具同源：`dsh-tool-fs`、`dsh-tool-bash`  
+- **本机 oracle 一直在查 profile 目录**：`DEFAULT_CONFIG.workspace = process.cwd()` 在**插件加载时**求值，
+  而宿主进程的 cwd 是 `…\.dsh\profiles\desktop`，于是 `packageVersion typescript` 报「本机没有该包」。
+  改为读运行时的 `exec.agent.session.header.cwd`（宿主自己的工具同源：`dsh-tool-fs`、`dsh-tool-bash`
   两处独立一致），事件扫描降为兜底；工具返回值新增 `workspace: {cwd, source}` 让结果**自证**走了哪条路。
-- **工具输出被宿主整条拒绝**：给返回对象新增字段却没写进 `OUTPUT_SCHEMA`（`additionalProperties: false`）  
+- **工具输出被宿主整条拒绝**：给返回对象新增字段却没写进 `OUTPUT_SCHEMA`（`additionalProperties: false`）
   → 每次调用都 `returned invalid output`。补上，并新增「用工具自己的 schema 校验它实际返回值」的契约测试。
 
 ### 修复：证伪通道
 
-- **`expr` 曾经能打死/挂死宿主**（独立验证者证伪了上一版修法）：改为在**子进程**里求值，  
-  且**判 thenable 与 JSON 序列化全部在 vm 内部**完成。vm 的 `timeout` 只约束 vm 内部，而上一版让宿主在  
-  vm 返回之后去读 `value.then` / `JSON.stringify(value)` —— `({get then(){for(;;){}}})`、`({toJSON(){for(;;){}}})`  
+- **`expr` 曾经能打死/挂死宿主**（独立验证者证伪了上一版修法）：改为在**子进程**里求值，
+  且**判 thenable 与 JSON 序列化全部在 vm 内部**完成。vm 的 `timeout` 只约束 vm 内部，而上一版让宿主在
+  vm 返回之后去读 `value.then` / `JSON.stringify(value)` —— `({get then(){for(;;){}}})`、`({toJSON(){for(;;){}}})`
   会把宿主挂死；表达式里**丢弃**的 rejection 仍按 Node 默认策略打死进程，且发生在返回 `ok:true` 之后。
-- **自指证据**：`selfPackageRoot()` 比的是**路径**，而「已安装副本 `…\.dsh\plugins\dsh-doubt`」与  
-  「仓库 `C:\work\dsh-doubt`」是同一个包的两个路径，前缀比较必然漏 → `symbolExists('normalizeConfig()', 'C:/work/dsh-doubt')`  
+- **自指证据**：`selfPackageRoot()` 比的是**路径**，而「已安装副本 `…\.dsh\plugins\dsh-doubt`」与
+  「仓库 `<repo>`」是同一个包的两个路径，前缀比较必然漏 → `symbolExists('normalizeConfig()', '<repo>')`
   引用插件自己的 `src/config.ts`。改为按 `package.json` 的 `name` 判定（任何副本、任何 junction 都覆盖）。
 - **方法/函数调用不是程序**：`.ps1` 里的 `z.Dispose()`、`foo.Bar(x)` 曾被拆成 argv[0] 拿去 `which` → 假证伪。
 - **另一台机器守卫**：上下文明确是目标服务器/远程主机的路径，不再交本机文件系统判定（只往沉默方向走）。
-- `rangeSatisfied` 对预发布版本与 semver 不一致（21/48 格），且错的方向**偏宽松**（可能假证实）；  
+- `rangeSatisfied` 对预发布版本与 semver 不一致（21/48 格），且错的方向**偏宽松**（可能假证实）；
   现在直接返回 `undefined`。
-- `symbolExists` 的 `claim` 曾同时充当「断言描述」与「被搜符号」（活体上整句描述被当符号名搜），  
+- `symbolExists` 的 `claim` 曾同时充当「断言描述」与「被搜符号」（活体上整句描述被当符号名搜），
   新增独立 `signature` 字段。
-- 测试临时文件原先硬编码 `C:\work\dsh-doubt\test\__tmp_*.txt` → 套件不可搬迁、并发会互相删文件  
+- 测试临时文件原先硬编码 `<repo>\test\__tmp_*.txt` → 套件不可搬迁、并发会互相删文件
   （独立验证者 4 进程 6/6 复现 `ENOENT … unlink`）；改为 `os.tmpdir()` + pid。
 
 ### 测试
 
-- 补入：交付文档溯源闸（一次/新文档、不重复、有出处小节则不触发、非交付扩展名不触发、ping-pong 硬顶、  
-  人工轮重置）、会话工作目录（**真实** `session.header.cwd` 形状 + 事件扫描兜底）、方法调用守卫、  
-  另一台机器守卫、设备 CLI 守卫、自指证据、工具输出 schema 契约、`expr` 子进程隔离（含验证者用过的  
+- 补入：交付文档溯源闸（一次/新文档、不重复、有出处小节则不触发、非交付扩展名不触发、ping-pong 硬顶、
+  人工轮重置）、会话工作目录（**真实** `session.header.cwd` 形状 + 事件扫描兜底）、方法调用守卫、
+  另一台机器守卫、设备 CLI 守卫、自指证据、工具输出 schema 契约、`expr` 子进程隔离（含验证者用过的
   全部恶意载荷，直接在测试进程内跑）。
-- 变异测试判为零覆盖的 3 处（`REMOTE_DEVICE_TOOLS` / `mentionsOtherMachine` / `isShellSyntax`）  
-  现已有**真的会失败**的测试；`mentionsOtherMachine` 原先那条测试还因为措辞不含存在性断言而在更早的闸  
+- 变异测试判为零覆盖的 3 处（`REMOTE_DEVICE_TOOLS` / `mentionsOtherMachine` / `isShellSyntax`）
+  现已有**真的会失败**的测试；`mentionsOtherMachine` 原先那条测试还因为措辞不含存在性断言而在更早的闸
   就被丢掉——测试绿得毫无意义，一并修正。
 
 ### 逐步骤溯源表
 
-本节由**溯源闸**要求补齐（插件在活体上发现本文件是交付文档而正文没有出处标注后自动提出）。  
+本节由**溯源闸**要求补齐（插件在活体上发现本文件是交付文档而正文没有出处标注后自动提出）。
 每一条按「有出处 / 无依据」两类标注；凡能机械核对的（符号、文件、版本号、宿主源码行）都在写入前实测过。
 
 | #  | 条目                                                                          | 依据                        | 出处 / 核对方式                                                                                                                                                                                                                                                                      |
@@ -246,7 +255,7 @@
 | 3  | 本机 oracle 曾查 profile 目录：`DEFAULT_CONFIG.workspace = process.cwd()` 在插件加载时求值 | 有出处                       | 源码 `src/config.ts`；运行时权威来源实测两处独立一致：`dsh-tool-fs/lib/index.js:173` = `function sessionCwd(exec) {`（返回 `exec.agent?.session.header.cwd`）、`dsh-tool-bash/lib/index.js:294` = `const headerCwd = exec.agent?.session.header.cwd;`                                                  |
 | 4  | `verify_claims` 的返回字段必须逐个写进 `OUTPUT_SCHEMA`                                 | 有出处                       | `src/tool.ts` 中 `additionalProperties: false`（实测存在）；宿主活体错误原文 `tool "verify_claims" returned invalid output: "value.workspace" is not a declared property`；契约测试在 `test/local.test.mjs`                                                                                          |
 | 5  | `expr` 曾能打死/挂死宿主；现改为子进程求值且取值全在 vm 内                                         | 有出处                       | 恶意载荷由**独立验证者**给出并复现：`({get then(){for(;;){}}})` 与 `({toJSON(){for(;;){}}})` 挂死宿主、表达式内**丢弃**的 rejection 在返回 `ok:true` 之后打死进程。修复后同一批载荷写进 `test/verify.test.mjs` 并在测试进程内跑通；活体上 `({get then(){for(;;){}}})` 已改为如实报 `Script execution timed out`                                    |
-| 6  | `selfPackageRoot()` 曾按**路径**比较 → 自指证据                                       | 有出处                       | 源码 `src/local.ts:13`（实测存在）；活体复现：修复前 `symbolExists('normalizeConfig()', 'C:/work/dsh-doubt')` 引用插件自己的 `src/config.ts`，修复后返回「找不到」（活体实测）                                                                                                                                               |
+| 6  | `selfPackageRoot()` 曾按**路径**比较 → 自指证据                                       | 有出处                       | 源码 `src/local.ts:13`（实测存在）；活体复现：修复前 `symbolExists('normalizeConfig()', '<repo>')` 引用插件自己的 `src/config.ts`，修复后返回「找不到」（活体实测）                                                                                                                                               |
 | 7  | 测试临时文件原先硬编码在 `test/` 下，并发会互删；改用 `os.tmpdir()` + pid                         | 有出处                       | 独立验证者以 4 个并发进程 6/6 复现 `ENOENT … unlink`；改用 `os.tmpdir()` 后我实测 4 并发 **4/4 exit 0、无 ENOENT**                                                                                                                                                                                     |
 | 8  | `rangeSatisfied` 对预发布版本与 node-semver 不一致                                    | 有出处（**引用验证者数字，未自行复现该数字**） | 独立验证者报告 21/48 布尔格不一致、方向偏宽松。我自行复现的是**发布版本**矩阵：**493 组 0 不一致**（`verify:independent` 第 2 项）                                                                                                                                                                                       |
 | 9  | 溯源闸「每份文档只问一次」                                                               | 有出处                       | 回放本机真实会话 `verify:independent` 第 4 项（documents=3 asks=1）；本节本身就是活体触发的结果                                                                                                                                                                                                          |
@@ -429,7 +438,7 @@
 | # | 条目 | 断言 | 依据 | 类别 |
 |---|---|---|---|---|
 | 1 | 当前 live 安装版 | `0.8.2` | 本轮读取 `C:\Users\Example\.dsh\plugins\dsh-doubt\package.json` → `0.8.2` | 有出处 |
-| 2 | 仓库版本 | `0.8.3` | `C:\work\dsh-doubt\package.json` → `0.8.3`；`dsh-plugin.json` → `0.8.3`；`npm run audit` → `版本一致：0.8.3` | 有出处 |
+| 2 | 仓库版本 | `0.8.3` | `<repo>\package.json` → `0.8.3`；`dsh-plugin.json` → `0.8.3`；`npm run audit` → `版本一致：0.8.3` | 有出处 |
 | 3 | 历史提及 `0.8.1` / `0.8.2` | 当时 live 确为这些版本 | CHANGELOG 0.8.1/0.8.2 条目与本地开发记录（未入库）；当时宿主状态现在无法重新观测 | 无依据（历史记录，本轮未复核） |
 | 4 | `scanAnswer(draft)` | 符号存在 | `src/scanner.ts:240` → `export function scanAnswer(text: string, options: ScanOptions = {}): ScanResult {` | 有出处 |
 | 5 | `hasMaterialClaim(draft)` | 符号存在 | `src/completion.ts:26` → `export function hasMaterialClaim(text: string): boolean {` | 有出处 |

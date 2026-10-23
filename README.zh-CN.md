@@ -1,9 +1,10 @@
 # dsh-doubt
 
 [![CI](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml/badge.svg)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Yangxingyu789/dsh-doubt?display_name=tag)](https://github.com/Yangxingyu789/dsh-doubt/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.2-blue)
+![Version](https://img.shields.io/badge/version-0.1.3-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt 图标" width="96">
 
@@ -54,7 +55,7 @@ Agent 的回答经常“听起来完成了”：文件写了却没读回、依�
 
 ### Windows 桌面（离线安装）
 
-下载 `dsh-doubt-0.1.2-source.zip` Release 资产（或 clone `v0.1.2` tag），在解压后的源码
+下载 `dsh-doubt-0.1.3-source.zip` Release 资产（或 clone `v0.1.3` tag），在解压后的源码
 目录运行 PowerShell：
 
 ```powershell
@@ -74,7 +75,7 @@ pnpm install --offline
 ### 从源码安装
 
 ```bash
-git clone --branch v0.1.2 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.3 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop
