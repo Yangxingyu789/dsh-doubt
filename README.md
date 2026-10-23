@@ -8,13 +8,22 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#requirements)
 [![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
 [![Tests](https://img.shields.io/badge/tests-12%20suites-brightgreen)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
+[![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E6%96%87%E6%A1%A3-blue)](docs/zh/README.md)
 ![Version](https://img.shields.io/badge/version-0.1.6-blue)
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">中文</a> ·
+  <a href="docs/zh/README.md">中文文档</a>
+</p>
 
 <p align="center"><img src="assets/icon.png" alt="dsh-doubt icon" width="180"></p>
 
 A completion guard for [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) agents.
 It checks the *real tool evidence* behind an answer before that answer is shown, so a
 model cannot pass off an unverified claim as a completed task.
+
+> 中文说明：[README.zh-CN.md](README.zh-CN.md) · [中文文档索引](docs/zh/README.md)
 
 ## Why
 

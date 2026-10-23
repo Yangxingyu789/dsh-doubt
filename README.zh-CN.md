@@ -8,7 +8,14 @@
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey)](#要求)
 [![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
 [![Tests](https://img.shields.io/badge/tests-12%20suites-brightgreen)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
+[![English](https://img.shields.io/badge/English-README-blue)](README.md)
 ![Version](https://img.shields.io/badge/version-0.1.6-blue)
+
+<p align="center">
+  <a href="README.md">English</a> ·
+  <a href="README.zh-CN.md">中文</a> ·
+  <a href="docs/zh/README.md">中文文档</a>
+</p>
 
 <p align="center"><img src="assets/icon.png" alt="dsh-doubt 图标" width="180"></p>
 
