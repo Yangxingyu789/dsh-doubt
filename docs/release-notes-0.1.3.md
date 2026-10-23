@@ -5,7 +5,7 @@ Follow-up release-hygiene release. No runtime behavior changes from 0.1.2.
 ## Highlights
 
 - The Windows upgrade launcher and offline upgrade scripts no longer hardcode the
-  developer's `C:\work\dsh-doubt` repository path or a specific DSH installation path. They
+  developer's local checkout path or a specific DSH installation path. They
   derive the repository from the script location and discover the app from
   `DSH_APP_DIR` / standard install locations; `-App` can override it.
 - Sanitized example paths in tests and historical documentation; added the release badge
