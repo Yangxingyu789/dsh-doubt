@@ -1,5 +1,15 @@
 # 更新日志
 
+## 0.1.4（可安装性与文档）
+
+- 提交构建后的 `lib/` 并移出 `.gitignore`：官方 `dsh plugin add github:` 直接使用仓库
+  内容，不再需要用户本地构建。
+- README 增加官方 DSH 插件管理器的安装命令、测试过的 DSH 版本和架构流程图。
+- 新增 [架构](docs/architecture.md)、[配置参考](docs/configuration.md)、
+  [兼容性](docs/compatibility.md)、[发布流程](docs/releasing.md) 和文档索引。
+- 安装地址和发布资产固定到 `v0.1.4`。
+- 运行时代码与 0.1.3 相同，未改变审核策略、闸门规则或默认配置。
+
 ## 0.1.3（发布工程化后续）
 
 - Windows 升级启动器和离线升级脚本不再硬编码开发机的绝对仓库路径和

@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/Yangxingyu789/dsh-doubt?display_name=tag)](https://github.com/Yangxingyu789/dsh-doubt/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.3-blue)
+![Version](https://img.shields.io/badge/version-0.1.4-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt 图标" width="96">
 
@@ -45,17 +45,34 @@ Agent 的回答经常“听起来完成了”：文件写了却没读回、依�
 耗时和模型返回的 token/缓存计数；未返回 usage 表示未知，不能当作零或用字符数替代。
 这些日志不记录提示词、工具原文或凭据。详见 [检查记录](docs/token-audit-2026-10-21.md)。
 
+## 工作方式
+
+![dsh-doubt 请求流程](assets/architecture.svg)
+
+工具调用先经过执行前闸门；最终回答在显示前经过无工具证据审核。边界说明见
+[架构文档](docs/architecture.md)，完整配置见 [配置参考](docs/configuration.md)。
+
 ## 要求
 
 - Node.js `^22.19` 或 `>=24`
 - 集成测试（`verify:host*`）需要 DSH 桌面应用或宿主包
+- 已在 DSH 桌面运行时 `0.2.1-rc.2` 上测试；见 [兼容性](docs/compatibility.md)
 - 主要平台是 Windows；Linux/macOS 可用于开发和 CI
 
 ## 安装
 
+### DSH 插件管理器（推荐）
+
+```bash
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.4
+```
+
+重启 harness 并刷新界面；插件在 **Settings → Plugins** 中管理，可随时启用/禁用。
+需要可复现安装时请固定 tag 或 commit。
+
 ### Windows 桌面（离线安装）
 
-下载 `dsh-doubt-0.1.3-source.zip` Release 资产（或 clone `v0.1.3` tag），在解压后的源码
+下载 `dsh-doubt-0.1.4-source.zip` Release 资产（或 clone `v0.1.4` tag），在解压后的源码
 目录运行 PowerShell：
 
 ```powershell
@@ -75,7 +92,7 @@ pnpm install --offline
 ### 从源码安装
 
 ```bash
-git clone --branch v0.1.3 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.4 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop
@@ -146,7 +163,8 @@ npm run audit          # 仓库一致性自检
 npm run verify         # 完整验证链（有 DSH_APP_DIR 时包含宿主测试）
 ```
 
-贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)。
+贡献说明见 [CONTRIBUTING.md](CONTRIBUTING.md)，完整文档索引见
+[docs/README.md](docs/README.md)。
 
 ## 验证溯源
 

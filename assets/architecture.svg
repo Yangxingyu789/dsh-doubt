@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="820" height="330" viewBox="0 0 820 330" role="img" aria-labelledby="title desc">
+  <title id="title">dsh-doubt request flow</title>
+  <desc id="desc">Model output passes through the execution gate and final-answer reviewer before display.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L0,6 L9,3 z" fill="#6b7280"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #94a3b8; stroke-width: 1.5; rx: 10; }
+      .accent { fill: #eef2ff; stroke: #6366f1; }
+      .warn { fill: #fff7ed; stroke: #f97316; }
+      .label { font: 13px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #0f172a; }
+      .small { font: 11px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; fill: #475569; }
+      .edge { stroke: #6b7280; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    </style>
+  </defs>
+  <rect class="box" x="20" y="120" width="150" height="80"/>
+  <text class="label" x="95" y="150" text-anchor="middle">User task</text>
+  <text class="small" x="95" y="170" text-anchor="middle">tools + final answer</text>
+
+  <rect class="box accent" x="215" y="110" width="170" height="100"/>
+  <text class="label" x="300" y="145" text-anchor="middle">Execution gate</text>
+  <text class="small" x="300" y="165" text-anchor="middle">approve / deny live</text>
+  <text class="small" x="300" y="182" text-anchor="middle">mutations</text>
+
+  <rect class="box" x="430" y="40" width="170" height="90"/>
+  <text class="label" x="515" y="72" text-anchor="middle">Tools / evidence</text>
+  <text class="small" x="515" y="92" text-anchor="middle">read, pwsh, verify_claims</text>
+  <text class="small" x="515" y="109" text-anchor="middle">actual results recorded</text>
+
+  <rect class="box accent" x="430" y="190" width="170" height="90"/>
+  <text class="label" x="515" y="222" text-anchor="middle">Answer reviewer</text>
+  <text class="small" x="515" y="242" text-anchor="middle">tool-less evidence check</text>
+  <text class="small" x="515" y="259" text-anchor="middle">approve / verify / unavailable</text>
+
+  <rect class="box warn" x="655" y="120" width="140" height="80"/>
+  <text class="label" x="725" y="150" text-anchor="middle">User sees answer</text>
+  <text class="small" x="725" y="170" text-anchor="middle">rejected drafts stay hidden</text>
+
+  <path class="edge" d="M170,160 L215,160"/>
+  <path class="edge" d="M385,145 L430,95"/>
+  <path class="edge" d="M515,130 L515,190"/>
+  <path class="edge" d="M600,235 L655,190"/>
+  <path class="edge" d="M725,120 L600,120" stroke-dasharray="5 5"/>
+  <text class="small" x="655" y="95" text-anchor="middle">retry with gaps</text>
+  <text class="small" x="300" y="235" text-anchor="middle">deny returns before tool body runs</text>
+</svg>

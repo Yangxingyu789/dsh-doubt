@@ -1,0 +1,17 @@
+import type { Context } from '@deepseek-ai/cordis';
+import { Config } from './config.js';
+export declare const name = "dsh-doubt";
+export declare const version = "0.1.4";
+export { Config };
+export { normalizeConfig, DEFAULT_CONFIG } from './config.js';
+export type { DoubtConfig } from './config.js';
+export { scanAnswer, DETECTOR_KINDS } from './scanner.js';
+export { runCheck, runChecks } from './verify.js';
+export { extractClaims, splitCommand } from './claims.js';
+export { gatherEvidence, verdictOf } from './evidence.js';
+export { commandAvailability, packageVersion, rangeSatisfied, symbolExists, versionClaim, which } from './local.js';
+export { factoredCheck, normalizeAnswer } from './factored.js';
+export { NetProbe } from './network.js';
+export { assessLiveMutation, detectLiveMutations, rollbackDisclosed, confirmationSeen, healthChecked } from './guard.js';
+export type { LiveMutationAssessment, LiveMutationFinding, LiveMutationKind } from './guard.js';
+export declare function apply(ctx: Context, config: unknown): void;

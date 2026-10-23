@@ -4,7 +4,7 @@
 [![Release](https://img.shields.io/github/v/release/Yangxingyu789/dsh-doubt?display_name=tag)](https://github.com/Yangxingyu789/dsh-doubt/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.19-brightgreen)](https://nodejs.org)
-![Version](https://img.shields.io/badge/version-0.1.3-blue)
+![Version](https://img.shields.io/badge/version-0.1.4-blue)
 
 <img src="assets/icon.png" alt="dsh-doubt icon" width="96">
 
@@ -50,17 +50,35 @@ evidence recovery remains available. Review-attempt logs include provider-report
 token counters when available; missing usage is unknown, not zero. See the
 [token audit](docs/token-audit-2026-10-21.md) for scope and verification details.
 
+## How it fits together
+
+![dsh-doubt request flow](assets/architecture.svg)
+
+Tool calls pass through the execution gate; the final answer passes through a tool-less
+evidence review before display. See [architecture](docs/architecture.md) for the
+boundaries and [configuration](docs/configuration.md) for every option.
+
 ## Requirements
 
 - Node.js `^22.19` or `>=24`
 - DSH desktop app or host bundle for the integration tests (`verify:host*`)
+- Tested against DSH desktop runtime `0.2.1-rc.2`; see [compatibility](docs/compatibility.md)
 - Windows is the primary platform; Linux/macOS are supported for development and CI
 
 ## Install
 
+### DSH plugin manager (recommended)
+
+```bash
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.4
+```
+
+Restart the harness and refresh the UI; the plugin is managed under **Settings → Plugins**
+and can be enabled or disabled there. Pin a tag or commit for reproducible installs.
+
 ### Windows desktop (offline installer)
 
-Download the `dsh-doubt-0.1.3-source.zip` release asset (or clone the `v0.1.3` tag),
+Download the `dsh-doubt-0.1.4-source.zip` release asset (or clone the `v0.1.4` tag),
 then run PowerShell from the unpacked source directory:
 
 ```powershell
@@ -82,7 +100,7 @@ already exist.
 ### From source
 
 ```bash
-git clone --branch v0.1.3 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.4 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop
@@ -158,7 +176,8 @@ npm run audit          # repository consistency checks
 npm run verify         # full chain, including host tests when DSH_APP_DIR is available
 ```
 
-Contribution notes are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Contribution notes are in [CONTRIBUTING.md](CONTRIBUTING.md). The full documentation
+index is in [docs/README.md](docs/README.md).
 
 ## Verification provenance
 

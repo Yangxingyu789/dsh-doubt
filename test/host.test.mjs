@@ -30,7 +30,7 @@ const { agentEvents } = await load('dsh-agent')
 const pluginAt = process.argv.indexOf('--plugin')
 const plugin = pluginAt < 0 ? new URL('../lib/index.js', import.meta.url).href : pathToFileURL(join(resolve(process.argv[pluginAt + 1]), 'lib/index.js')).href
 const { apply, version } = await import(plugin)
-assert.equal(version, '0.1.3')
+assert.equal(version, '0.1.4')
 const ctx = new Context()
 ctx.provide('systemPrompt', { tools: () => () => {}, section: () => () => {} })
 const llm = new LlmRuntime(ctx)
