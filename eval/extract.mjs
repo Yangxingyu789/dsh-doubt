@@ -1,9 +1,5 @@
-/**
- * 对真实回答跑插件的取证管线，产出可核对的断言清单。
- * 离线一遍、联网一遍，便于比较 Tier B 的增益。
- *
- * 用法：node eval/extract.mjs [--corpus eval/out/corpus.json] [--out eval/out/claims.json] [--online]
- */
+/** Run the evidence pipeline over real answers and emit inspectable claims. */
+
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'

@@ -86,13 +86,6 @@ assert.equal(bogusPath?.verdict, 'refuted', `本机不存在的路径应被证�
 
 const bogusPkg = bogus.find((e) => e.kind === 'package')
 assert.equal(bogusPkg?.verdict, 'unverifiable', `离线时「本机没这个包」不得算证伪：${bogusPkg?.verdict} / ${bogusPkg?.note ?? ''}`)
-
-
-
-//
-
-
-
 const remoteAnswer = '目标服务器上存在 E:\\zz-definitely-missing\\a\\b.yaml，请先确认后再继续。'
 const remoteClaims = extractClaims(scanAnswer(remoteAnswer, {}).findings, { text: remoteAnswer })
 const remoteReachable = remoteClaims.filter((c) => c.kind === 'path')

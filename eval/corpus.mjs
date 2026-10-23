@@ -1,16 +1,12 @@
-/**
- * 语料抽取：把宿主真实会话记录里的「模型回答」取出来，作为评测输入。
- * 不编题目、不自己答——用这台机器上真实发生过的会话。
- *
- * 用法：node eval/corpus.mjs [--sessions <dir>] [--out eval/out/corpus.json] [--min-chars 240]
- */
+/** Extract real assistant answers from session logs for evaluation. */
+
 
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { zstdDecompressSync } from 'node:zlib'
 
-/** 宿主按帧追加写入：一个 .jsonl.zstd 里有多个 zstd 帧，必须逐帧解 */
+
 const FRAME_MAGIC = [0x28, 0xb5, 0x2f, 0xfd]
 
 function decompressAll(buf, diag) {

@@ -9,7 +9,7 @@
 [![Topic](https://img.shields.io/badge/topic-dsh--plugin-blue)](https://github.com/topics/dsh-plugin)
 [![Tests](https://img.shields.io/badge/tests-12%20suites-brightgreen)](https://github.com/Yangxingyu789/dsh-doubt/actions/workflows/ci.yml)
 [![中文文档](https://img.shields.io/badge/%E4%B8%AD%E6%96%87-%E6%96%87%E6%A1%A3-blue)](docs/zh/README.md)
-![Version](https://img.shields.io/badge/version-0.1.6-blue)
+![Version](https://img.shields.io/badge/version-0.1.7-blue)
 
 <p align="center">
   <a href="README.md">English</a> ·
@@ -83,7 +83,7 @@ boundaries and [configuration](docs/configuration.md) for every option.
 ### DSH plugin manager (recommended)
 
 ```bash
-dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.6
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.7
 ```
 
 Restart the harness and refresh the UI; the plugin is managed under **Settings → Plugins**
@@ -91,7 +91,7 @@ and can be enabled or disabled there. Pin a tag or commit for reproducible insta
 
 ### Windows desktop (offline installer)
 
-Download the `dsh-doubt-0.1.6-source.zip` release asset (or clone the `v0.1.6` tag),
+Download the `dsh-doubt-0.1.7-source.zip` release asset (or clone the `v0.1.7` tag),
 then run PowerShell from the unpacked source directory:
 
 ```powershell
@@ -113,7 +113,7 @@ already exist.
 ### From source
 
 ```bash
-git clone --branch v0.1.6 https://github.com/Yangxingyu789/dsh-doubt.git
+git clone --branch v0.1.7 https://github.com/Yangxingyu789/dsh-doubt.git
 cd dsh-doubt
 pnpm install
 node scripts/install-local.mjs --profile desktop

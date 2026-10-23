@@ -1,16 +1,5 @@
-/**
- * 打分：把人工独立核实的真值（eval/out/labels.json）和插件判定对齐。
- *
- * 真值字段：
- *   truth: "false" | "true" | "unknown"     —— 该断言在现实中是否成立（用独立手段核实，见 method）
- *   extraction_ok: true | false             —— 抽取出的片段是否忠实代表回答里的断言
- *   asserted: true | false                  —— 回答是否**断言**了这件事（还是只是提到/别处的事）
- *   method: 我用的独立核实手段
- *
- * 关键指标不是「准确率」，而是两类危险错误的速率：
- *   假证伪（插件说错，其实对）—— 会把正确回答改坏
- *   假证实（插件说对，其实错）—— 给幻觉背书
- */
+/** Compare plugin verdicts with manually verified truth labels. */
+
 
 import { readFileSync } from 'node:fs'
 

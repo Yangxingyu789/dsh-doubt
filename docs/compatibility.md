@@ -21,7 +21,7 @@ The supported discovery convention is the GitHub topic **`dsh-plugin`**. The off
 plugin installer is:
 
 ```bash
-dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.6
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.7
 ```
 
 After installing, restart the harness and refresh the UI; the plugin is managed under

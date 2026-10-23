@@ -198,20 +198,6 @@ export function installDoubtLoop(ctx: any, options: LoopOptions): { dispose: () 
     if (extract.text.length < cfg.minAnswerChars) return
 
     const scan = scanAnswer(extract.text, { detectors: cfg.detectors })
-
-
-    //
-
-
-
-
-    //
-
-
-    //
-
-
-
     if (cfg.requireProvenance && entry.provAsks < PROVENANCE_MAX_ASKS && extract.text.length >= PROVENANCE_MIN_CHARS) {
       const written = writtenDeliverables(events, turn)
       if (written.length > 0) {

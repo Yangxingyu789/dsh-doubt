@@ -32,6 +32,8 @@ skipped; that is expected on CI because hosted runners do not have a DSH install
 - Add or update a test for behavior changes. Tests must pass on Windows and Linux, so do
   not depend on a specific drive letter, home directory, shell prompt or locale.
 - Do not include personal paths, real session logs, credentials or customer data.
+- Keep code comments short and factual: explain non-obvious intent, edge cases or
+  invariants; do not narrate obvious steps or leave generated-sounding prose.
 - Update `README.md` / `README.zh-CN.md` and `CHANGELOG.md` for user-visible changes.
 - Do not change the plugin's public config keys without calling it out in the PR.
 - Run `npm run check && npm run build && npm test && npm run smoke && npm run audit`

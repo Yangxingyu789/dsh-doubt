@@ -1,7 +1,5 @@
-/**
- * 修复前后对照：同一批真值标注，看每条断言的判定怎么变。
- * 按 session#turn#kind#snippet 匹配，不靠会漂移的行号 id。
- */
+/** Compare verdicts across labeled claim versions. */
+
 
 import { readFileSync } from 'node:fs'
 

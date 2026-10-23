@@ -19,7 +19,7 @@ DSH 仍是开发者预览版：插件契约可能随版本变化。请固定你�
 官方可发现性约定是 GitHub topic **`dsh-plugin`**。官方插件安装命令：
 
 ```bash
-dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.6
+dsh plugin --profile web add github:Yangxingyu789/dsh-doubt#v0.1.7
 ```
 
 安装后重启 harness 并刷新界面；插件在 **Settings → Plugins** 中管理，可启用/禁用。

@@ -136,13 +136,6 @@ const viaTool = await runCheck({ kind: 'packageVersion', name: 'typescript', cla
 assert.equal(viaTool.ok, true, `runCheck 应能跑 packageVersion：${viaTool.detail}`)
 const viaTool2 = await runCheck({ kind: 'commandAvailability', argv: ['node', '--version'], claim: 'node --version' }, { timeoutMs: 5000, denyBinaries: [], cwd })
 assert.equal(viaTool2.ok, true, 'runCheck 应能跑 commandAvailability')
-
-
-//
-
-
-
-
 assert.equal(sessionCwd([{ type: 'session', cwd: 'E:\\proj' }, { type: 'turn/end', data: {} }]), 'E:\\proj', 'sessionCwd 应取会话事件的顶层 cwd')
 assert.equal(sessionCwd([{ type: 'turn/end', data: {} }]), null, '没有 session 事件应返回 null')
 

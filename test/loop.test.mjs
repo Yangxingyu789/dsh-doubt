@@ -171,12 +171,6 @@ assert.equal(out.results.length, 2)
 assert.equal(out.results[0].ok, true)
 assert.equal(out.results[1].ok, false)
 assert.ok(out.summary.includes('失败 1 条'))
-
-
-//
-
-
-
 const DOC_BODY = [
   '# 部署手册',
   '',

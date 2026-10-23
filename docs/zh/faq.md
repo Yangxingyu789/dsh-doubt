@@ -3,7 +3,7 @@
 ## 安装后插件没有生效？
 
 1. 确认安装的是对应 profile：
-   `dsh plugin --profile <profile> add github:Yangxingyu789/dsh-doubt#v0.1.6`
+   `dsh plugin --profile <profile> add github:Yangxingyu789/dsh-doubt#v0.1.7`
 2. 重启 harness 并刷新界面。
 3. 在 **Settings → Plugins** 确认插件已启用。
 4. 用 `dsh --profile <profile> --dump-config` 检查是否有 `- id: dsh-doubt`。

@@ -37,7 +37,7 @@ const say = (...a) => { if (!quiet) console.log(...a) }
 
 const app = resolveHostApp()
 if (!app) {
-  // Not an error: a machine without the desktop app simply cannot run these checks.
+  // No DSH install: platform checks are unavailable here.
   console.log(`SKIP unpack-host: no installed DSH app found (${HOST_HINT})`)
   process.exit(0)
 }

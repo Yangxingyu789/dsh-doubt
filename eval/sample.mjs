@@ -1,9 +1,5 @@
-/**
- * 分层抽样，带上下文：为「真值标注」准备材料。
- * 判定一条断言到底是真是假，必须看它在原回答里说的是什么话——所以打印上下文。
- *
- * 用法：node eval/sample.mjs [--per 6]
- */
+/** Stratified, reproducible sampling with context for manual labels. */
+
 
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
