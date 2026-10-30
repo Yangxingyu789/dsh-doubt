@@ -95,9 +95,9 @@
     }
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "4.0.4",
-    "@types/node": "^24",
-    "typescript": "^5"
+    "@deepseek-ai/cordis": "4.0.5",
+    "@types/node": "^26",
+    "typescript": "^7"
   },
   "engines": {
     "node": "^22.19 || >=24"
